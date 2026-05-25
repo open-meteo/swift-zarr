@@ -1,0 +1,4 @@
+module CBlosc {
+    header "../deps/c-blosc/blosc/blosc.h"
+    export *
+}
