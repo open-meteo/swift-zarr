@@ -7,14 +7,6 @@ import FoundationXML
 import FoundationNetworking
 #endif
 
-public enum StorageError: Error, Sendable {
-    case invalidURL(String)
-    case writeFailed(String)
-    case noSuchFile(String)
-    case httpError(statusCode: Int, path: String)
-    case listFailed(String)
-}
-
 public final class S3CompatibleStorage: Storage {
     private let baseURL: URL
     private let session: URLSession

@@ -1,5 +1,13 @@
 import Foundation
 
+public enum StorageError: Error, Sendable {
+    case invalidURL(String)
+    case writeFailed(String)
+    case noSuchFile(String)
+    case httpError(statusCode: Int, path: String)
+    case listFailed(String)
+}
+
 public protocol Storage: Sendable {
     /// Read the full contents of a blob at the given path.
     func read(path: String) async throws -> Data

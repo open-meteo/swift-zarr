@@ -18,7 +18,3 @@ public struct GzipCodec: Codec {
         return Data(bytes)
     }
 }
-
-public enum GzipError: Error, Sendable {
-    case decompressFailed(String)
-}

@@ -86,20 +86,6 @@ public struct V3Codec: Codable, Sendable {
 public enum ZarrVersion: String, Sendable, Equatable {
     case v2
     case v3
-
-    public var metadataFileName: String {
-        switch self {
-        case .v2: return ".zarray"
-        case .v3: return "zarr.json"
-        }
-    }
-
-    public var groupMetadataFileName: String {
-        switch self {
-        case .v2: return ".zgroup"
-        case .v3: return "zarr.json"
-        }
-    }
 }
 
 /// Convert V3 metadata fields to a V2-compatible compressor dictionary.

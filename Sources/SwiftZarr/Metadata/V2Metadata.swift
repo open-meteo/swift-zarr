@@ -37,21 +37,6 @@ public struct V2ArrayMetadata: Codable, Sendable {
     public var compressorID: String? {
         compressor?["id"]?.value as? String
     }
-
-    public var isShuffled: Bool {
-        (compressor?["shuffle"]?.value as? Int) == 1
-    }
-
-    public var fillValueDescription: String? {
-        guard let fv = fillValue?.value else { return nil }
-        switch fv {
-        case let s as String: return s
-        case let i as Int: return "\(i)"
-        case let d as Double: return "\(d)"
-        case let b as Bool: return "\(b)"
-        default: return nil
-        }
-    }
 }
 
 public struct V2Attrs: Codable, Sendable {
