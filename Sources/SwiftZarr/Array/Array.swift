@@ -45,7 +45,7 @@ private struct ChunkIndexBuffer: Sendable {
     /// Return the chunk indices for chunk `i` as a new `[Int]`.
     subscript(_ i: Int) -> [Int] {
         let start = i * ndim
-        return Array(storage[start ..< start + ndim])
+        return Array(storage[start..<start + ndim])
     }
 }
 
@@ -214,8 +214,10 @@ public struct ZarrArray: Sendable {
         let separator = meta.dimensionSeparator ?? "."
         let numChunks = (0..<ndim).map { d in (s[d] + c[d] - 1) / c[d] }
         var stride = [Int](repeating: 1, count: ndim)
-        for d in (0..<ndim - 1).reversed() {
-            stride[d] = stride[d + 1] * s[d + 1]
+        if ndim >= 2 {
+            for d in (0..<ndim - 1).reversed() {
+                stride[d] = stride[d + 1] * s[d + 1]
+            }
         }
         let orderIsF = meta.order == .F
         return DerivedArrayProperties(
@@ -250,10 +252,10 @@ public struct ZarrArray: Sendable {
     }
 
     /// Build the storage key for a chunk.
-    /// V2: `{i}.{j}.{k}` (separator-joined indices)
-    /// V3: `data/c/{i}/{j}/{k}` (with prefix per Zarr V3 spec)
+    /// V2: `{i}.{j}.{k}` (separator-joined indices); scalar (0-D) uses `"0"`.
+    /// V3: `data/c/{i}/{j}/{k}` (with prefix per Zarr V3 spec); scalar uses `"data/c/0"`.
     public func chunkKey(_ indices: [Int]) -> String {
-        let key = indices.map(String.init).joined(separator: _separator)
+        let key = indices.isEmpty ? "0" : indices.map(String.init).joined(separator: _separator)
         if version == .v3 {
             return Self.v3ChunkPrefix + key
         }
@@ -338,8 +340,8 @@ public struct ZarrArray: Sendable {
 
             // If the request covers the entire chunk exactly, decode directly.
             let fullCoverage = (0..<ndim).allSatisfy {
-                ranges[$0].lowerBound == chunkOrigin[$0] &&
-                ranges[$0].upperBound == chunkOrigin[$0] + actualChunkSize[$0]
+                ranges[$0].lowerBound == chunkOrigin[$0]
+                    && ranges[$0].upperBound == chunkOrigin[$0] + actualChunkSize[$0]
             }
             if fullCoverage {
                 return try T.decode(chunkData, endian: dataType.endian)
@@ -368,10 +370,14 @@ public struct ZarrArray: Sendable {
                 }
             }
             copyChunkSlice(
-                chunkData: chunkData, into: &output,
-                ndim: ndim, elementSize: elementSize,
-                localCount: localCount, localStart: localStart,
-                outputStart: outputStart, outputStride: outputStride,
+                chunkData: chunkData,
+                into: &output,
+                ndim: ndim,
+                elementSize: elementSize,
+                localCount: localCount,
+                localStart: localStart,
+                outputStart: outputStart,
+                outputStride: outputStride,
                 chunkLocalStride: chunkLocalStride
             )
             return try T.decode(output, endian: dataType.endian)
@@ -420,10 +426,14 @@ public struct ZarrArray: Sendable {
                     }
 
                     copyChunkSlice(
-                        chunkData: chunkData, into: &output,
-                        ndim: ndim, elementSize: elementSize,
-                        localCount: localCount, localStart: localStart,
-                        outputStart: outputStart, outputStride: outputStride,
+                        chunkData: chunkData,
+                        into: &output,
+                        ndim: ndim,
+                        elementSize: elementSize,
+                        localCount: localCount,
+                        localStart: localStart,
+                        outputStart: outputStart,
+                        outputStride: outputStride,
                         chunkLocalStride: chunkLocalStride
                     )
                 }
@@ -543,7 +553,10 @@ public struct ZarrArray: Sendable {
                                         }
                                     }
                                     rawPtr.advanced(by: globalFlat * elementSize)
-                                        .copyMemory(from: srcPtr.advanced(by: localFlat * elementSize), byteCount: elementSize)
+                                        .copyMemory(
+                                            from: srcPtr.advanced(by: localFlat * elementSize),
+                                            byteCount: elementSize
+                                        )
                                 }
                             }
                         }
@@ -811,10 +824,14 @@ public struct ZarrArray: Sendable {
 
     /// Copy a slice of `chunkData` into `output`, handling both C-order and F-order layouts.
     private func copyChunkSlice(
-        chunkData: Data, into output: inout Data,
-        ndim: Int, elementSize: Int,
-        localCount: [Int], localStart: [Int],
-        outputStart: [Int], outputStride: [Int],
+        chunkData: Data,
+        into output: inout Data,
+        ndim: Int,
+        elementSize: Int,
+        localCount: [Int],
+        localStart: [Int],
+        outputStart: [Int],
+        outputStride: [Int],
         chunkLocalStride: [Int]
     ) {
         output.withUnsafeMutableBytes { dstRaw in
@@ -858,7 +875,10 @@ public struct ZarrArray: Sendable {
                         outputRowStart += outputStart[ndim - 1] * outputStride[ndim - 1]
                         chunkRowStart += localStart[ndim - 1] * chunkLocalStride[ndim - 1]
                         dstPtr.advanced(by: outputRowStart * elementSize)
-                            .copyMemory(from: srcPtr.advanced(by: chunkRowStart * elementSize), byteCount: innerByteCount)
+                            .copyMemory(
+                                from: srcPtr.advanced(by: chunkRowStart * elementSize),
+                                byteCount: innerByteCount
+                            )
                     }
                 } else {
                     let byteCount = localCount[0] * elementSize

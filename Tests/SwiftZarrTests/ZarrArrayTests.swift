@@ -1479,3 +1479,192 @@ func testFOrderEdgeChunk() async throws {
 
     #expect(try await array.readRaw() == int32LERange(15))
 }
+
+// MARK: - 4D array
+
+@Test
+func test4DArray() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    // 2×2×2×2 array, 2×2×2×2 chunks (single chunk)
+    let shape = [2, 2, 2, 2]
+    let count = shape.reduce(1, *)
+    let data = int32LERange(count)
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: shape.map(UInt64.init),
+        chunks: shape.map(UInt64.init),
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: nil,
+        order: .C,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "arr4d")
+    try await array.storeMetadata()
+    try await storeAllChunks(array: array, data: data)
+
+    // Full read matches.
+    let readBack = try await array.readRaw()
+    #expect(readBack == data)
+
+    // Typed subset read: pick the first half of the last axis, i.e. [:,:,:,0:1].
+    let subset: [Int32] = try await array.retrieveArraySubset([0..<2, 0..<2, 0..<2, 0..<1])
+    // Expected: elements at index [..., 0] in last dim = 0,2,4,6,8,10,12,14
+    let expected: [Int32] = [0, 2, 4, 6, 8, 10, 12, 14]
+    #expect(subset == expected)
+}
+
+// MARK: - Empty-shape (scalar) array
+
+@Test
+func testEmptyShapeArray() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    // 0-D array (scalar)
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [],
+        chunks: [],
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: .int(42),
+        order: .C,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "scalar")
+    try await array.storeMetadata()
+    // Do not store any chunk; it should use fill value.
+    let result: [Int32] = try await array.retrieveArraySubset([])
+    #expect(result == [42])
+}
+
+// MARK: - Type-mismatch error
+
+@Test
+func testTypeMismatchError() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [4],
+        chunks: [4],
+        dtype: "<i4",  // int32
+        compressor: nil,
+        fillValue: nil,
+        order: .C,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
+    try await array.storeMetadata()
+    try await storeAllChunks(array: array, data: int32LERange(4))
+
+    // Reading as Float (f4) should throw typeMismatch.
+    await #expect(throws: ZarrElementError.self) {
+        let _: [Float] = try await array.retrieveArraySubset([0..<4])
+    }
+}
+
+// MARK: - Out-of-bounds slice
+
+@Test
+func testOutOfBoundsSlice() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [5],
+        chunks: [5],
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: nil,
+        order: .C,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
+    try await array.storeMetadata()
+    try await storeAllChunks(array: array, data: int32LERange(5))
+
+    // Range beyond array bounds.
+    await #expect(throws: ZarrArrayError.self) {
+        let _: [Int32] = try await array.retrieveArraySubset([0..<6])
+    }
+}
+
+// MARK: - retrieveChunkIfExists
+
+@Test
+func testRetrieveChunkIfExists() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [6],
+        chunks: [3],
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: nil,
+        order: .C,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
+    try await array.storeMetadata()
+
+    // Store only chunk [0]; chunk [1] is absent.
+    let chunk0Data = Data(int32LERange(3).prefix(12))
+    try await array.storeChunk([0], data: chunk0Data)
+
+    let present: [Int32]? = try await array.retrieveChunkIfExists([0])
+    #expect(present == [0, 1, 2])
+
+    let absent: [Int32]? = try await array.retrieveChunkIfExists([1])
+    #expect(absent == nil)
+}
+
+// MARK: - eraseChunk
+
+@Test
+func testEraseChunk() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [4],
+        chunks: [4],
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: .int(99),
+        order: .C,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
+    try await array.storeMetadata()
+    try await storeAllChunks(array: array, data: int32LERange(4))
+
+    // Chunk exists; read it back.
+    let before: [Int32] = try await array.retrieveChunk([0])
+    #expect(before == [0, 1, 2, 3])
+
+    // Erase it; subsequent read should return fill value.
+    try await array.eraseChunk([0])
+    let after: [Int32] = try await array.retrieveChunk([0])
+    #expect(after == [99, 99, 99, 99])
+}

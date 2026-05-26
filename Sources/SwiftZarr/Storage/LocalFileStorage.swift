@@ -98,7 +98,7 @@ public final class LocalFileStorage: Storage {
         } catch {
             let nsError = error as NSError
             if nsError.domain == NSCocoaErrorDomain,
-               (nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError)
+                nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError
             {
                 throw StorageError.noSuchFile(path)
             }
