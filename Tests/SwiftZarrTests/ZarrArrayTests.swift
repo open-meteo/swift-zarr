@@ -1312,6 +1312,69 @@ func testV3NestedGroups() async throws {
     #expect(try await arrRead.readRaw() == data)
 }
 
+/// Verifies that a V3 sub-group (zarr.json with node_type "group") is listed
+/// as `.group`, not `.array`.
+@Test
+func testV3NestedGroupChildClassification() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let storage = LocalFileStorage(basePath: tmp)
+
+    // Root V3 group
+    let root = ZarrGroup(
+        v3Metadata: V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil),
+        storage: storage,
+        path: "root"
+    )
+    try await root.storeMetadata()
+
+    // V3 sub-group nested inside root
+    let sub = ZarrGroup(
+        v3Metadata: V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil),
+        storage: storage,
+        path: "root/sub"
+    )
+    try await sub.storeMetadata()
+
+    // V3 array nested inside the sub-group
+    let data = int32LERange(4)
+    let arr = try ZarrArray(
+        v3Metadata: V3ArrayMetadata(
+            zarrFormat: 3,
+            nodeType: "array",
+            shape: [4],
+            dataType: "<i4",
+            chunkGrid: .init(name: "regular", configuration: .init(chunkShape: [4])),
+            chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
+            fillValue: nil,
+            codecs: nil,
+            storageTransformers: nil,
+            dimensionNames: nil,
+            attributes: nil
+        ),
+        storage: storage,
+        path: "root/sub/arr"
+    )
+    try await arr.storeMetadata()
+    try await storeAllChunks(array: arr, data: data)
+
+    // root must classify "sub" as .group, not .array
+    let rootChildren = try await root.listChildren()
+    #expect(rootChildren == [.group("sub")])
+
+    // sub must classify "arr" as .array
+    let subRead = try await root.openGroup(name: "sub")
+    #expect(subRead.version == .v3)
+    let subChildren = try await subRead.listChildren()
+    #expect(subChildren == [.array("arr")])
+
+    // Data round-trips correctly through the nested hierarchy
+    let arrRead = try await subRead.openArray(name: "arr")
+    #expect(arrRead.version == .v3)
+    #expect(try await arrRead.readRaw() == data)
+}
+
 @Test
 func testV3CompressorRoundtrip() async throws {
     let tmp = try createTempDir()

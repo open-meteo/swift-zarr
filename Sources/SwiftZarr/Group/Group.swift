@@ -15,6 +15,15 @@ public enum ZarrGroupChild: Sendable, Equatable {
     }
 }
 
+/// Minimal decodable used to inspect `node_type` in a `zarr.json` without
+/// fully decoding either `V3ArrayMetadata` or `V3GroupMetadata`.
+private struct V3NodeType: Decodable {
+    let nodeType: String
+    enum CodingKeys: String, CodingKey {
+        case nodeType = "node_type"
+    }
+}
+
 public struct ZarrGroup: Sendable {
     public let storage: any Storage
     public let path: String
@@ -107,7 +116,9 @@ public struct ZarrGroup: Sendable {
                 group.addTask { [storage, path] in
                     let childPath = path + "/" + name
                     if try await storage.exists(path: childPath + "/zarr.json") {
-                        return .array(name)
+                        let data = try await storage.read(path: childPath + "/zarr.json")
+                        let node = try JSONDecoder().decode(V3NodeType.self, from: data)
+                        return node.nodeType == "group" ? .group(name) : .array(name)
                     }
                     if try await storage.exists(path: childPath + "/.zarray") {
                         return .array(name)
