@@ -2,9 +2,8 @@ import Foundation
 
 /// Zarr V3 array metadata (from `zarr.json`).
 public struct V3ArrayMetadata: Codable, Sendable {
-    public let zarrFormat: String
-    public let metadataEncoding: String?
-    public let metadataKey: String?
+    public let zarrFormat: Int
+    public let nodeType: String
     public let shape: [UInt64]
     public let dataType: String
     public let chunkGrid: ChunkGrid
@@ -35,8 +34,7 @@ public struct V3ArrayMetadata: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case zarrFormat = "zarr_format"
-        case metadataEncoding = "metadata_encoding"
-        case metadataKey = "metadata_key"
+        case nodeType = "node_type"
         case shape
         case dataType = "data_type"
         case chunkGrid = "chunk_grid"
@@ -51,15 +49,13 @@ public struct V3ArrayMetadata: Codable, Sendable {
 
 /// Zarr V3 group metadata (from `zarr.json`).
 public struct V3GroupMetadata: Codable, Sendable {
-    public let zarrFormat: String
-    public let metadataEncoding: String?
-    public let metadataKey: String?
+    public let zarrFormat: Int
+    public let nodeType: String
     public let attributes: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
         case zarrFormat = "zarr_format"
-        case metadataEncoding = "metadata_encoding"
-        case metadataKey = "metadata_key"
+        case nodeType = "node_type"
         case attributes
     }
 }

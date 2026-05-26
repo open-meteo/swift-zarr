@@ -463,9 +463,8 @@ public struct ZarrArray: Sendable {
             try await storage.write(path: path + "/.zarray", data: data)
         case .v3:
             let v3meta = V3ArrayMetadata(
-                zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-                metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-                metadataKey: "/",
+                zarrFormat: 3,
+                nodeType: "array",
                 shape: metadata.shape,
                 dataType: metadata.dtype,
                 chunkGrid: .init(

@@ -66,9 +66,8 @@ public struct ZarrGroup: Sendable {
             try await storage.write(path: path + "/.zgroup", data: data)
         case .v3:
             let v3meta = V3GroupMetadata(
-                zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-                metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-                metadataKey: "/",
+                zarrFormat: 3,
+                nodeType: "group",
                 attributes: nil
             )
             let data = try encoder.encode(v3meta)

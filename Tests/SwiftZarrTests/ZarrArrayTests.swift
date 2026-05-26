@@ -1063,9 +1063,8 @@ func testV3ArrayWriteRead() async throws {
     let chunkShape: [UInt64] = [2, 3]
     let data = int32LERange(24)
     let v3meta = V3ArrayMetadata(
-        zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-        metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-        metadataKey: "/",
+        zarrFormat: 3,
+        nodeType: "array",
         shape: shape,
         dataType: "<i4",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
@@ -1103,9 +1102,8 @@ func testV3GroupWriteRead() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let v3meta = V3GroupMetadata(
-        zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-        metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-        metadataKey: "/",
+        zarrFormat: 3,
+        nodeType: "group",
         attributes: nil
     )
     let storage = LocalFileStorage(basePath: tmp)
@@ -1126,9 +1124,8 @@ func testV3NestedGroups() async throws {
     let storage = LocalFileStorage(basePath: tmp)
     let root = ZarrGroup(
         v3Metadata: V3GroupMetadata(
-            zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-            metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-            metadataKey: "/",
+            zarrFormat: 3,
+            nodeType: "group",
             attributes: nil
         ),
         storage: storage,
@@ -1141,9 +1138,8 @@ func testV3NestedGroups() async throws {
     let chunkShape: [UInt64] = [2, 3]
     let arr = try ZarrArray(
         v3Metadata: V3ArrayMetadata(
-            zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-            metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-            metadataKey: "/",
+            zarrFormat: 3,
+            nodeType: "array",
             shape: shape,
             dataType: "<i4",
             chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
@@ -1177,9 +1173,8 @@ func testV3CompressorRoundtrip() async throws {
     let chunkShape: [UInt64] = [2, 3]
     let codecs = [V3Codec(name: "gzip", configuration: ["level": AnyCodable(5)])]
     let v3meta = V3ArrayMetadata(
-        zarrFormat: "https://purl.org/zarr/spec/protocol/core/3.0",
-        metadataEncoding: "https://purl.org/zarr/spec/protocol/core/3.0",
-        metadataKey: "/",
+        zarrFormat: 3,
+        nodeType: "array",
         shape: shape,
         dataType: "<i4",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
