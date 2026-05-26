@@ -406,6 +406,77 @@ func testDimensionSeparatorSlash() async throws {
 }
 
 @Test
+func testDimensionSeparatorDot() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let data = int32LERange(16)
+    let meta = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [4, 4].map(UInt64.init),
+        chunks: [2, 2].map(UInt64.init),
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: nil,
+        order: .C,
+        filters: nil,
+        dimensionSeparator: "."
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
+    try await array.storeMetadata()
+    try await storeAllChunks(array: array, data: data)
+
+    #expect(try await storage.exists(path: "arr/0.0"))
+    #expect(try await storage.exists(path: "arr/0.1"))
+    #expect(try await storage.exists(path: "arr/1.0"))
+    #expect(try await storage.exists(path: "arr/1.1"))
+    let readData = try await array.readRaw()
+    #expect(readData == data)
+    #expect(array.chunkKey([0, 0]) == "0.0")
+    #expect(array.chunkKey([1, 1]) == "1.1")
+}
+
+@Test
+func testV3SeparatorDot() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let shape: [UInt64] = [4, 4]
+    let chunkShape: [UInt64] = [2, 2]
+    let data = int32LERange(16)
+    let v3meta = V3ArrayMetadata(
+        zarrFormat: 3,
+        nodeType: "array",
+        shape: shape,
+        dataType: "<i4",
+        chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
+        chunkKeyEncoding: .init(name: "default", configuration: .init(separator: ".")),
+        fillValue: nil,
+        codecs: nil,
+        storageTransformers: nil,
+        dimensionNames: nil,
+        attributes: nil
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let array = try ZarrArray(v3Metadata: v3meta, storage: storage, path: "arr")
+    #expect(array.version == .v3)
+    try await array.storeMetadata()
+    try await storeAllChunks(array: array, data: data)
+
+    #expect(try await storage.exists(path: "arr/data/c/0.0"))
+    #expect(try await storage.exists(path: "arr/data/c/0.1"))
+    #expect(array.chunkKey([0, 0]) == "data/c/0.0")
+
+    let readData = try await array.readRaw()
+    #expect(readData == data)
+
+    let reopened = try await ZarrArray(storage: storage, path: "arr")
+    #expect(reopened.chunkKey([0, 0]) == "data/c/0.0")
+    #expect(try await reopened.readRaw() == data)
+}
+
+@Test
 func testPartialEdgeChunks() async throws {
     let tmp = try createTempDir()
     defer { try? FileManager.default.removeItem(atPath: tmp) }

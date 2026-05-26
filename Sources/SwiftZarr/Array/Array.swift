@@ -473,7 +473,7 @@ public struct ZarrArray: Sendable {
                 ),
                 chunkKeyEncoding: .init(
                     name: "default",
-                    configuration: .init(separator: "/")
+                    configuration: .init(separator: _separator)
                 ),
                 fillValue: metadata.fillValue,
                 codecs: _v3Codecs.isEmpty ? nil : _v3Codecs,
