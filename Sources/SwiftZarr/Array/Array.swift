@@ -445,7 +445,7 @@ public struct ZarrArray: Sendable {
 
     /// Retrieve the raw encoded bytes of a chunk (before codec decompression).
     /// Returns `nil` if the chunk file does not exist.
-    public func retrieveEncodedChunk(_ indices: [Int]) async throws -> Data? {
+    func retrieveEncodedChunk(_ indices: [Int]) async throws -> Data? {
         try validateIndices(indices)
         let key = path + "/" + chunkKey(indices)
         guard try await storage.exists(path: key) else { return nil }
