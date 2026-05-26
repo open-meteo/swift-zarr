@@ -755,7 +755,10 @@ func testGroupHierarchy() async throws {
     try await a2.storeMetadata(); try await storeAllChunks(array: a2, data: data2)
 
     let groupRead = try await ZarrGroup(storage: storage, path: "group")
-    #expect(groupRead.metadata.zarrFormat == 2)
+    guard case .v2(let groupMeta) = groupRead.metadata else {
+        Issue.record("Expected V2 group metadata"); return
+    }
+    #expect(groupMeta.zarrFormat == 2)
     #expect(try await groupRead.listChildren() == [.array("a1"), .array("a2")])
 
     let a1Read = try await groupRead.openArray(name: "a1")
@@ -945,9 +948,12 @@ func testMetadataParsing() async throws {
     try await array.storeMetadata()
     #expect(array.shape == [10])
     #expect(array.chunkShape == [5])
-    #expect(array.metadata.dtype == "|i1")
-    #expect(array.metadata.fillValue?.intValue == 42)
-    #expect(array.metadata.order == .C)
+    guard case .v2(let arrayMeta) = array.metadata else {
+        Issue.record("Expected V2 array metadata"); return
+    }
+    #expect(arrayMeta.dtype == "|i1")
+    #expect(arrayMeta.fillValue?.intValue == 42)
+    #expect(arrayMeta.order == .C)
 }
 
 @Test

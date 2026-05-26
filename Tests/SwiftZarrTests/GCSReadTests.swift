@@ -20,7 +20,10 @@ let gcsStorePath = "ar/1959-2022-6h-64x32_equiangular_conservative.zarr"
 func testGCSGroupMetadata() async throws {
     let storage = try S3CompatibleStorage(baseURL: gcsBaseURL)
     let group = try await ZarrGroup(storage: storage, path: gcsStorePath)
-    #expect(group.metadata.zarrFormat == 2)
+    guard case .v2(let groupMeta) = group.metadata else {
+        Issue.record("Expected V2 group metadata"); return
+    }
+    #expect(groupMeta.zarrFormat == 2)
 }
 
 @Test
@@ -29,8 +32,11 @@ func testGCSArrayMetadataLat() async throws {
     let lat = try await ZarrArray(storage: storage, path: "\(gcsStorePath)/latitude")
     #expect(lat.shape == [32])
     #expect(lat.chunkShape == [32])
-    #expect(lat.metadata.dtype == "<f8")
-    #expect(lat.metadata.compressorID == "blosc")
+    guard case .v2(let latMeta) = lat.metadata else {
+        Issue.record("Expected V2 array metadata"); return
+    }
+    #expect(latMeta.dtype == "<f8")
+    #expect(latMeta.compressorID == "blosc")
 }
 
 @Test
@@ -39,7 +45,10 @@ func testGCSArrayMetadataT2m() async throws {
     let t2m = try await ZarrArray(storage: storage, path: "\(gcsStorePath)/2m_temperature")
     #expect(t2m.shape == [92044, 64, 32])
     #expect(t2m.chunkShape == [100, 64, 32])
-    #expect(t2m.metadata.dtype == "<f4")
+    guard case .v2(let t2mMeta) = t2m.metadata else {
+        Issue.record("Expected V2 array metadata"); return
+    }
+    #expect(t2mMeta.dtype == "<f4")
 }
 
 @Test
@@ -47,7 +56,10 @@ func testGCSArrayMetadataLevel() async throws {
     let storage = try S3CompatibleStorage(baseURL: gcsBaseURL)
     let level = try await ZarrArray(storage: storage, path: "\(gcsStorePath)/level")
     #expect(level.shape == [13])
-    #expect(level.metadata.dtype == "<i8")
+    guard case .v2(let levelMeta) = level.metadata else {
+        Issue.record("Expected V2 array metadata"); return
+    }
+    #expect(levelMeta.dtype == "<i8")
 }
 
 // MARK: - Typed reads

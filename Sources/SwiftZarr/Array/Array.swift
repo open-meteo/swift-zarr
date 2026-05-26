@@ -8,6 +8,12 @@ public enum ZarrArrayError: Error, Sendable, Equatable {
     case invalidDataSize(expected: Int, got: Int)
 }
 
+/// The original metadata for a Zarr array, preserved in its native format.
+public enum ZarrArrayMetadata: Sendable {
+    case v2(V2ArrayMetadata)
+    case v3(V3ArrayMetadata)
+}
+
 private struct DerivedArrayProperties: Sendable {
     let dataType: ZarrDataType
     let shape: [Int]
@@ -52,9 +58,15 @@ private struct ChunkIndexBuffer: Sendable {
 public struct ZarrArray: Sendable {
     public let storage: any Storage
     public let path: String
-    public let metadata: V2ArrayMetadata
+    /// The original array metadata in its native Zarr version format.
+    public let metadata: ZarrArrayMetadata
     public let dataType: ZarrDataType
     public let version: ZarrVersion
+
+    /// The internal V2 view of the metadata, used by all read/write logic.
+    /// For V2 arrays this is the stored metadata directly; for V3 arrays it is
+    /// synthesised by `makeV2Meta(from:)`.
+    private let _v2meta: V2ArrayMetadata
 
     private let _shape: [Int]
     private let _chunkShape: [Int]
@@ -86,8 +98,9 @@ public struct ZarrArray: Sendable {
             let decoder = JSONDecoder()
             let v3meta = try decoder.decode(V3ArrayMetadata.self, from: metadataData)
             version = .v3
+            metadata = .v3(v3meta)
             let v2meta = Self.makeV2Meta(from: v3meta)
-            self.metadata = v2meta
+            _v2meta = v2meta
             let derived = try Self.computeDerived(from: v2meta)
             dataType = derived.dataType
             _shape = derived.shape
@@ -104,7 +117,8 @@ public struct ZarrArray: Sendable {
             let decoder = JSONDecoder()
             let meta = try decoder.decode(V2ArrayMetadata.self, from: metadataData)
             version = .v2
-            self.metadata = meta
+            metadata = .v2(meta)
+            _v2meta = meta
             let derived = try Self.computeDerived(from: meta)
             dataType = derived.dataType
             _shape = derived.shape
@@ -126,7 +140,8 @@ public struct ZarrArray: Sendable {
         let normalizedPath = Self.normalizePath(path)
         self.path = normalizedPath
         version = .v2
-        self.metadata = metadata
+        self.metadata = .v2(metadata)
+        _v2meta = metadata
         let derived = try Self.computeDerived(from: metadata)
         dataType = derived.dataType
         _shape = derived.shape
@@ -147,8 +162,9 @@ public struct ZarrArray: Sendable {
         let normalizedPath = Self.normalizePath(path)
         self.path = normalizedPath
         version = .v3
+        metadata = .v3(v3Metadata)
         let v2meta = Self.makeV2Meta(from: v3Metadata)
-        self.metadata = v2meta
+        _v2meta = v2meta
         let derived = try Self.computeDerived(from: v2meta)
         dataType = derived.dataType
         _shape = derived.shape
@@ -285,9 +301,9 @@ public struct ZarrArray: Sendable {
     public func retrieveArraySubset<T: ZarrElement>(_ ranges: [Range<Int>]) async throws -> [T] {
         guard dataType.matches(type: T.self) else {
             throw ZarrElementError.typeMismatch(
-                expectedKind: T.zarrDtypeKind,
+                expected: T.zarrDtypeKind,
                 expectedSize: T.zarrDtypeSize,
-                actualDtype: metadata.dtype
+                actual: dataType
             )
         }
         guard ranges.count == ndim else {
@@ -589,23 +605,23 @@ public struct ZarrArray: Sendable {
         let encoder = JSONEncoder()
         switch version {
         case .v2:
-            let data = try encoder.encode(metadata)
+            let data = try encoder.encode(_v2meta)
             try await storage.write(path: path + "/.zarray", data: data)
         case .v3:
             let v3meta = V3ArrayMetadata(
                 zarrFormat: 3,
                 nodeType: "array",
-                shape: metadata.shape,
-                dataType: metadata.dtype,
+                shape: _v2meta.shape,
+                dataType: _v2meta.dtype,
                 chunkGrid: .init(
                     name: "regular",
-                    configuration: .init(chunkShape: metadata.chunks)
+                    configuration: .init(chunkShape: _v2meta.chunks)
                 ),
                 chunkKeyEncoding: .init(
                     name: "default",
                     configuration: .init(separator: _separator)
                 ),
-                fillValue: metadata.fillValue,
+                fillValue: _v2meta.fillValue,
                 codecs: _v3Codecs.isEmpty ? nil : _v3Codecs,
                 storageTransformers: nil,
                 dimensionNames: nil,
@@ -708,7 +724,7 @@ public struct ZarrArray: Sendable {
     }
 
     private func fillValueAsData() -> Data? {
-        guard let fillValue = metadata.fillValue else { return nil }
+        guard let fillValue = _v2meta.fillValue else { return nil }
         let size = dataType.elementSize
 
         switch fillValue {
