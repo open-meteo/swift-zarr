@@ -531,12 +531,10 @@ public struct ZarrArray: Sendable {
         case "none", "bytes":
             return data
         case "gzip":
-            let level = codec.configuration?["level"]?.value as? Int ?? 5
-            let c = GzipCodec(level: level)
+            let c = GzipCodec()
             return direction == .encode ? try c.encode(data) : try c.decode(data)
         case "zlib":
-            let level = codec.configuration?["level"]?.value as? Int ?? 5
-            let c = ZlibCodec(level: level)
+            let c = ZlibCodec()
             return direction == .encode ? try c.encode(data) : try c.decode(data)
         case "bz2":
             let level = codec.configuration?["level"]?.value as? Int ?? 5
