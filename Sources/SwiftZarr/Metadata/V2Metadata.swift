@@ -86,35 +86,61 @@ public struct V2Attrs: Codable, Sendable {
     }
 }
 
-public struct AnyCodable: Codable, @unchecked Sendable {
-    public let value: Any
+public struct AnyCodable: Codable, Sendable {
+    internal enum Storage: Sendable {
+        case int(Int)
+        case double(Double)
+        case string(String)
+        case bool(Bool)
+        case dict([String: AnyCodable])
+    }
 
-    public init(_ value: Any) { self.value = value }
+    internal let storage: Storage
+
+    public var value: Any {
+        switch storage {
+        case .int(let v): v
+        case .double(let v): v
+        case .string(let v): v
+        case .bool(let v): v
+        case .dict(let v): v
+        }
+    }
+
+    public init(_ value: Any) {
+        switch value {
+        case let v as Int: storage = .int(v)
+        case let v as Double: storage = .double(v)
+        case let v as String: storage = .string(v)
+        case let v as Bool: storage = .bool(v)
+        case let v as [String: AnyCodable]: storage = .dict(v)
+        default: storage = .string("\(value)")
+        }
+    }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let intVal = try? container.decode(Int.self) {
-            value = intVal
+            storage = .int(intVal)
         } else if let doubleVal = try? container.decode(Double.self) {
-            value = doubleVal
+            storage = .double(doubleVal)
         } else if let stringVal = try? container.decode(String.self) {
-            value = stringVal
+            storage = .string(stringVal)
         } else if let boolVal = try? container.decode(Bool.self) {
-            value = boolVal
+            storage = .bool(boolVal)
         } else {
-            value = try container.decode([String: AnyCodable].self)
+            storage = .dict(try container.decode([String: AnyCodable].self))
         }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        switch value {
-        case let intVal as Int: try container.encode(intVal)
-        case let doubleVal as Double: try container.encode(doubleVal)
-        case let stringVal as String: try container.encode(stringVal)
-        case let boolVal as Bool: try container.encode(boolVal)
-        case let dictVal as [String: AnyCodable]: try container.encode(dictVal)
-        default: break
+        switch storage {
+        case .int(let v): try container.encode(v)
+        case .double(let v): try container.encode(v)
+        case .string(let v): try container.encode(v)
+        case .bool(let v): try container.encode(v)
+        case .dict(let v): try container.encode(v)
         }
     }
 }
