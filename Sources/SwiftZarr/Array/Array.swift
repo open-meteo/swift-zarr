@@ -27,6 +27,28 @@ private enum ResolvedCodec: Sendable {
     case blosc(cname: String, clevel: CInt, shuffle: CInt, typesize: Int)
 }
 
+/// A flat buffer of chunk indices using a single heap allocation.
+/// Each chunk's `ndim` coordinates are stored contiguously; chunk `i` occupies
+/// `storage[i*ndim ..< (i+1)*ndim]`.
+private struct ChunkIndexBuffer: Sendable {
+    let ndim: Int
+    private let storage: [Int]
+
+    init(ndim: Int, storage: [Int]) {
+        self.ndim = ndim
+        self.storage = storage
+    }
+
+    /// Number of chunks in the buffer.
+    var count: Int { ndim == 0 ? 1 : (storage.isEmpty ? 0 : storage.count / ndim) }
+
+    /// Return the chunk indices for chunk `i` as a new `[Int]`.
+    subscript(_ i: Int) -> [Int] {
+        let start = i * ndim
+        return Array(storage[start ..< start + ndim])
+    }
+}
+
 public struct ZarrArray: Sendable {
     public let storage: any Storage
     public let path: String
@@ -783,7 +805,7 @@ public struct ZarrArray: Sendable {
         }
     }
 
-    private func collectAllChunkIndices() -> [[Int]] {
+    private func collectAllChunkIndices() -> ChunkIndexBuffer {
         collectChunkIndices(ranges: _numChunks.map { 0..<$0 })
     }
 
@@ -848,15 +870,16 @@ public struct ZarrArray: Sendable {
     }
 
     /// Collect all chunk indices within the given ranges (one range per dimension).
-    private func collectChunkIndices(ranges: [Range<Int>]) -> [[Int]] {
+    private func collectChunkIndices(ranges: [Range<Int>]) -> ChunkIndexBuffer {
         let ndim = ranges.count
-        var result: [[Int]] = []
-        result.reserveCapacity(ranges.map({ $0.count }).reduce(1, *))
+        let chunkCount = ranges.isEmpty ? 1 : ranges.map({ $0.count }).reduce(1, *)
+        var flat = [Int]()
+        flat.reserveCapacity(chunkCount * ndim)
         var current = [Int](repeating: 0, count: ndim)
 
         func collect(dim: Int) {
             if dim == ndim {
-                result.append(current)
+                flat.append(contentsOf: current)
                 return
             }
             for i in ranges[dim] {
@@ -865,6 +888,6 @@ public struct ZarrArray: Sendable {
             }
         }
         collect(dim: 0)
-        return result
+        return ChunkIndexBuffer(ndim: ndim, storage: flat)
     }
 }
