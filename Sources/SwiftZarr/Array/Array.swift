@@ -7,6 +7,16 @@ public enum ZarrArrayError: Error, Sendable, Equatable {
     case invalidSlice(String)
 }
 
+private struct DerivedArrayProperties: Sendable {
+    let dataType: ZarrDataType
+    let shape: [Int]
+    let chunkShape: [Int]
+    let separator: String
+    let numChunks: [Int]
+    let arrayStride: [Int]
+    let orderIsF: Bool
+}
+
 public struct ZarrArray: Sendable {
     public let storage: any Storage
     public let path: String
@@ -21,15 +31,22 @@ public struct ZarrArray: Sendable {
     private let _arrayStride: [Int]
     private let _orderIsF: Bool
     private let _v3Codecs: [V3Codec]
+    private let _concurrentLimit: Int
+
+    private static let v3ChunkPrefix = "data/c/"
 
     public var ndim: Int { _shape.count }
     public var elementSize: Int { dataType.elementSize }
     public var shape: [Int] { _shape }
     public var chunkShape: [Int] { _chunkShape }
 
+    private static func normalizePath(_ path: String) -> String {
+        path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+
     public init(storage: any Storage, path: String) async throws {
         self.storage = storage
-        let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+        let normalizedPath = Self.normalizePath(path)
         self.path = normalizedPath
         if try await storage.exists(path: normalizedPath + "/zarr.json") {
             let metadataData = try await storage.read(path: normalizedPath + "/zarr.json")
@@ -48,37 +65,58 @@ public struct ZarrArray: Sendable {
                 dimensionSeparator: v3meta.chunkKeyEncoding?.configuration?.separator ?? "/"
             )
             self.metadata = v2meta
-            (dataType, _shape, _chunkShape, _separator, _numChunks, _arrayStride, _orderIsF) =
-                try Self.computeDerived(from: v2meta)
+            let derived = try Self.computeDerived(from: v2meta)
+            dataType = derived.dataType
+            _shape = derived.shape
+            _chunkShape = derived.chunkShape
+            _separator = derived.separator
+            _numChunks = derived.numChunks
+            _arrayStride = derived.arrayStride
+            _orderIsF = derived.orderIsF
             _v3Codecs = v3meta.codecs ?? []
+            _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
         } else {
             let metadataData = try await storage.read(path: normalizedPath + "/.zarray")
             let decoder = JSONDecoder()
             let meta = try decoder.decode(V2ArrayMetadata.self, from: metadataData)
             version = .v2
             self.metadata = meta
-            (dataType, _shape, _chunkShape, _separator, _numChunks, _arrayStride, _orderIsF) =
-                try Self.computeDerived(from: meta)
+            let derived = try Self.computeDerived(from: meta)
+            dataType = derived.dataType
+            _shape = derived.shape
+            _chunkShape = derived.chunkShape
+            _separator = derived.separator
+            _numChunks = derived.numChunks
+            _arrayStride = derived.arrayStride
+            _orderIsF = derived.orderIsF
             _v3Codecs = meta.compressor.map { compressorDictToV3Codecs($0) } ?? []
+            _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
         }
     }
 
     /// Create an array from in-memory V2 metadata without reading from storage.
     public init(metadata: V2ArrayMetadata, storage: any Storage, path: String) throws {
         self.storage = storage
-        let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+        let normalizedPath = Self.normalizePath(path)
         self.path = normalizedPath
         version = .v2
         self.metadata = metadata
-        (dataType, _shape, _chunkShape, _separator, _numChunks, _arrayStride, _orderIsF) =
-            try Self.computeDerived(from: metadata)
+        let derived = try Self.computeDerived(from: metadata)
+        dataType = derived.dataType
+        _shape = derived.shape
+        _chunkShape = derived.chunkShape
+        _separator = derived.separator
+        _numChunks = derived.numChunks
+        _arrayStride = derived.arrayStride
+        _orderIsF = derived.orderIsF
         _v3Codecs = metadata.compressor.map { compressorDictToV3Codecs($0) } ?? []
+        _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
     }
 
     /// Create an array from in-memory V3 metadata without reading from storage.
     public init(v3Metadata: V3ArrayMetadata, storage: any Storage, path: String) throws {
         self.storage = storage
-        let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+        let normalizedPath = Self.normalizePath(path)
         self.path = normalizedPath
         version = .v3
         let v2meta = V2ArrayMetadata(
@@ -93,16 +131,21 @@ public struct ZarrArray: Sendable {
             dimensionSeparator: v3Metadata.chunkKeyEncoding?.configuration?.separator ?? "/"
         )
         self.metadata = v2meta
-        (dataType, _shape, _chunkShape, _separator, _numChunks, _arrayStride, _orderIsF) =
-            try Self.computeDerived(from: v2meta)
+        let derived = try Self.computeDerived(from: v2meta)
+        dataType = derived.dataType
+        _shape = derived.shape
+        _chunkShape = derived.chunkShape
+        _separator = derived.separator
+        _numChunks = derived.numChunks
+        _arrayStride = derived.arrayStride
+        _orderIsF = derived.orderIsF
         _v3Codecs = v3Metadata.codecs ?? []
+        _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
     }
 
     private static func computeDerived(
         from meta: V2ArrayMetadata
-    ) throws -> (
-        ZarrDataType, [Int], [Int], String, [Int], [Int], Bool
-    ) {
+    ) throws -> DerivedArrayProperties {
         let parsed = try ZarrDataType.parse(meta.dtype)
         let s = meta.shape.map(Int.init)
         let c = meta.chunks.map(Int.init)
@@ -114,7 +157,15 @@ public struct ZarrArray: Sendable {
             stride[d] = stride[d + 1] * s[d + 1]
         }
         let orderIsF = meta.order == .F
-        return (parsed, s, c, separator, numChunks, stride, orderIsF)
+        return DerivedArrayProperties(
+            dataType: parsed,
+            shape: s,
+            chunkShape: c,
+            separator: separator,
+            numChunks: numChunks,
+            arrayStride: stride,
+            orderIsF: orderIsF
+        )
     }
 
     /// Number of chunks per dimension (the chunk grid shape).
@@ -139,11 +190,11 @@ public struct ZarrArray: Sendable {
 
     /// Build the storage key for a chunk.
     /// V2: `{i}.{j}.{k}` (separator-joined indices)
-    /// V3: `data/c/{i}/{j}/{k}` (with prefix)
+    /// V3: `data/c/{i}/{j}/{k}` (with prefix per Zarr V3 spec)
     public func chunkKey(_ indices: [Int]) -> String {
         let key = indices.map(String.init).joined(separator: _separator)
         if version == .v3 {
-            return "data/c/" + key
+            return Self.v3ChunkPrefix + key
         }
         return key
     }
@@ -203,25 +254,13 @@ public struct ZarrArray: Sendable {
             lastChunk[d] = (ranges[d].upperBound - 1) / _chunkShape[d]
         }
 
-        var intersectingChunks: [[Int]] = []
-        var current = [Int](repeating: 0, count: ndim)
-        func collect(dim: Int) {
-            if dim == ndim {
-                intersectingChunks.append(current)
-                return
-            }
-            for i in firstChunk[dim]...lastChunk[dim] {
-                current[dim] = i
-                collect(dim: dim + 1)
-            }
-        }
-        collect(dim: 0)
+        let chunkRanges = (0..<ndim).map { d in firstChunk[d]...(lastChunk[d]) }
+        let intersectingChunks = collectChunkIndices(ranges: chunkRanges.map { Range($0) })
 
         var output = Data(count: outputElements * elementSize)
-        let concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
 
-        for batchStart in stride(from: 0, to: intersectingChunks.count, by: concurrentLimit) {
-            let batchEnd = min(batchStart + concurrentLimit, intersectingChunks.count)
+        for batchStart in stride(from: 0, to: intersectingChunks.count, by: _concurrentLimit) {
+            let batchEnd = min(batchStart + _concurrentLimit, intersectingChunks.count)
 
             try await withThrowingTaskGroup(
                 of: (indices: [Int], data: Data).self
@@ -229,15 +268,8 @@ public struct ZarrArray: Sendable {
                 for i in batchStart..<batchEnd {
                     let indices = intersectingChunks[i]
                     group.addTask {
-                        let key = self.path + "/" + self.chunkKey(indices)
-                        if try await self.storage.exists(path: key) {
-                            let raw = try await self.storage.read(path: key)
-                            let data = try self.decompress(raw)
-                            return (indices, data)
-                        } else {
-                            let data = try self.fillValueData(for: indices)
-                            return (indices, data)
-                        }
+                        let data = try await self.readChunkRaw(indices)
+                        return (indices, data)
                     }
                 }
 
@@ -351,15 +383,14 @@ public struct ZarrArray: Sendable {
         let totalBytes = totalElements * dataType.elementSize
         var output = Data(count: totalBytes)
         let allChunks = collectAllChunkIndices()
-        let concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
         let ndim = self.ndim
         let shape = _shape
         let chunkShape = _chunkShape
         let arrayStride = _arrayStride
         let elementSize = dataType.elementSize
 
-        for batchStart in stride(from: 0, to: allChunks.count, by: concurrentLimit) {
-            let batchEnd = min(batchStart + concurrentLimit, allChunks.count)
+        for batchStart in stride(from: 0, to: allChunks.count, by: _concurrentLimit) {
+            let batchEnd = min(batchStart + _concurrentLimit, allChunks.count)
 
             try await withThrowingTaskGroup(
                 of: (indices: [Int], data: Data).self
@@ -367,15 +398,8 @@ public struct ZarrArray: Sendable {
                 for i in batchStart..<batchEnd {
                     let indices = allChunks[i]
                     group.addTask {
-                        let key = self.path + "/" + self.chunkKey(indices)
-                        if try await self.storage.exists(path: key) {
-                            let raw = try await self.storage.read(path: key)
-                            let data = try self.decompress(raw)
-                            return (indices, data)
-                        } else {
-                            let data = try self.fillValueData(for: indices)
-                            return (indices, data)
-                        }
+                        let data = try await self.readChunkRaw(indices)
+                        return (indices, data)
                     }
                 }
 
@@ -446,7 +470,7 @@ public struct ZarrArray: Sendable {
             throw ZarrArrayError.mismatchedDimensions(expected: ndim, got: indices.count)
         }
         for d in 0..<ndim {
-            guard indices[d] < _numChunks[d] else {
+            guard indices[d] >= 0 && indices[d] < _numChunks[d] else {
                 throw ZarrArrayError.invalidChunkIndex(indices)
             }
         }
@@ -688,8 +712,12 @@ public struct ZarrArray: Sendable {
     }
 
     private func collectAllChunkIndices() -> [[Int]] {
-        let nchunks = _numChunks
-        let ndim = self.ndim
+        collectChunkIndices(ranges: _numChunks.map { 0..<$0 })
+    }
+
+    /// Collect all chunk indices within the given ranges (one range per dimension).
+    private func collectChunkIndices(ranges: [Range<Int>]) -> [[Int]] {
+        let ndim = ranges.count
         var result: [[Int]] = []
         var current = [Int](repeating: 0, count: ndim)
 
@@ -698,7 +726,7 @@ public struct ZarrArray: Sendable {
                 result.append(current)
                 return
             }
-            for i in 0..<nchunks[dim] {
+            for i in ranges[dim] {
                 current[dim] = i
                 collect(dim: dim + 1)
             }
