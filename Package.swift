@@ -1,12 +1,11 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.0
 
 import PackageDescription
 
 let package = Package(
     name: "SwiftZarr",
     platforms: [
-        .macOS(.v15),
-        .iOS(.v18),
+        .macOS(.v15)
     ],
     products: [
         .library(name: "SwiftZarr", targets: ["SwiftZarr"])

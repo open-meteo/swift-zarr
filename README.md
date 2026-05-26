@@ -1,74 +1,41 @@
 # SwiftZarr
 
-A native Swift Zarr V2/V3 reader/writer port. Lives in the `swift/` subdirectory of the [zarrs] Rust workspace.
+A native Swift library for reading and writing [Zarr](https://zarr.dev) V2 and V3 arrays. Inspired by and related to the [zarrs](https://github.com/zarrs/zarrs) Rust library.
 
-Supports Blosc+LZ4 (via vendored c-blosc), gzip, zlib, and bzip2 (via SWCompression) compressed arrays, as well as uncompressed arrays.
+## Requirements
 
-## Feature comparison with zarrs (Rust)
+- Swift 6.0+
+- Swift Package Manager
+- macOS 15+ / iOS 18+
 
-### Implemented
+## Installation
 
-| Feature | zarrs (Rust) | SwiftZarr |
-|---|---|---|
-| V2 array read | ✅ | ✅ |
-| V2 group read | ✅ | ✅ |
-| V3 array read | ✅ | ✅ |
-| V3 group read | ✅ | ✅ |
-| V2 attrs | ✅ | ✅ |
-| Blosc decompression | ✅ | ✅ (LZ4 only) |
-| Gzip decompression | ✅ | ✅ |
-| Zlib decompression | ✅ | ✅ |
-| BZip2 decompression | ✅ | ✅ |
-| Shuffle filter | ✅ | ✅ (via blosc) |
-| C order (row-major) | ✅ | ✅ |
-| F order (column-major) | ✅ | ✅ |
-| NaN/Infinity/hex fill values | ✅ | ✅ |
-| Missing chunks → fill | ✅ | ✅ |
-| Integer fill values | ✅ | ✅ |
-| Parallel chunk reading | ✅ | ✅ |
-| Typed reads (generic) | ✅ | ✅ |
-| Slice/subset reading | ✅ | ✅ |
-| S3-compatible storage | ✅ | ✅ |
-| GCS S3-compatible listing | ✅ | ✅ (via S3 XML `ListBucket` API) |
-| Local filesystem storage | ✅ | ✅ |
-| V2 array write | ✅ | ✅ |
-| V2 group write | ✅ | ✅ |
-| Array/group type distinction | ✅ | ✅ |
+Add SwiftZarr as a dependency in your `Package.swift`:
 
-### Not implemented (prioritised)
-
-| # | Feature | Priority | Reason |
-|---|---|---|---|---|
-| 1 | **Zstd codec** | Medium | Not in SWCompression — needs separate dependency |
-| 2 | **Consolidated metadata** | Medium | `.zmetadata` avoids N+1 HEAD requests per child in `listChildren()` |
-| 4 | **Chunk cache** | Low | LRU cache for decoded chunks |
-| 5 | **float16/bfloat16 / complex types** | Low | Not in ERA5 |
-| 6 | **vlen-utf8 / vlen-bytes** | Low | Variable-length string types |
-| 8 | **Standalone Shuffle codec** | Low | Blosc includes shuffle |
-| 9 | **ndarray integration** | Low | Return `ArraySlice` or similar |
-| 10 | **CRC32C / Adler32 checksums** | Low | Identity read doesn't verify |
-
-## Remaining work
-
-### High
-- (none — all high-priority items complete)
-
-### Medium
-- **Zstd codec**: needs separate dependency (not in SWCompression)
-- **Consolidated metadata (`.zmetadata`)**: read once instead of N+1 HEAD requests per child in `listChildren()`
-- **V3 attributes**: read attributes from `zarr.json` instead of separate `.zattrs`
-
-### Low
-- **Cached `BloscCodec` instance**: allocate once instead of one per `decompress()` call
-- **Chunk cache**
-
-## Building
-
-```bash
-cd swift
-swift build
-swift test
+```swift
+dependencies: [
+    .package(url: "https://github.com/open-meteo/swift-zarr", from: "0.0.1"),
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: [
+            .product(name: "SwiftZarr", package: "swift-zarr"),
+        ]
+    ),
+]
 ```
+
+## Features
+
+- **Zarr V2 and V3** — read and write arrays and groups
+- **Codecs** — Blosc+LZ4 (vendored c-blosc), gzip, zlib, bzip2, and uncompressed
+- **Storage backends** — local filesystem, S3-compatible (AWS, GCS, etc.)
+- **Typed reads** — generic `retrieveChunk` and `retrieveArraySubset` returning typed Swift arrays
+- **Slice/subset reading** — retrieve arbitrary N-dimensional ranges without loading full chunks
+- **C and F order** — row-major and column-major chunk layouts
+- **Fill values** — missing chunks transparently return the array fill value, including NaN/Infinity/hex
+- **Parallel chunk fetching** — concurrent chunk reads using Swift structured concurrency
 
 ## Usage
 
@@ -88,4 +55,20 @@ let t2m = try await group.openArray(name: "2m_temperature")
 let slice: [Float] = try await t2m.retrieveArraySubset([0..<10, 0..<64, 0..<8])
 ```
 
-[zarrs]: https://github.com/zarrs/zarrs
+## Development
+
+```bash
+swift build
+swift test
+```
+
+## TODO
+
+- Zstd codec (requires a separate dependency not included in SWCompression)
+- Consolidated metadata (`.zmetadata`) to reduce round-trips on remote storage
+- LRU chunk cache to avoid redundant decompression for overlapping reads
+- float16 / bfloat16 data type support
+
+## License
+
+MIT. See [LICENSE](LICENSE).
