@@ -65,17 +65,8 @@ public struct V3Codec: Codable, Sendable {
     public let name: String
     public let configuration: [String: ZarrJSONValue]?
 
-    /// Normalize a V3 codec name (URL or short name) to a short name.
-    public var shortName: String {
-        let lower = name.lowercased()
-        if lower.hasSuffix("/gzip/1.0") || lower == "gzip" { return "gzip" }
-        if lower.hasSuffix("/blosc/1.0") || lower == "blosc" { return "blosc" }
-        if lower.hasSuffix("/zlib/1.0") || lower == "zlib" { return "zlib" }
-        if lower.hasSuffix("/bz2/1.0") || lower == "bz2" { return "bz2" }
-        if lower.hasSuffix("/bytes/1.0") || lower == "bytes" { return "bytes" }
-        let parts = name.split(separator: "/")
-        return String(parts.last ?? "unknown")
-    }
+    /// Return the codec short name (identity — V3 spec uses short names directly).
+    public var shortName: String { name }
 }
 
 /// Zarr specification version.
