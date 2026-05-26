@@ -23,8 +23,10 @@ public struct BloscCodec: Codec {
         guard data.count >= 16 else {
             throw BloscError.invalidData("data too short for blosc header")
         }
-        let destSize = data.withUnsafeBytes {
-            $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)
+        // Blosc header bytes 4-7 are the uncompressed size in little-endian order.
+        let destSize = data.withUnsafeBytes { raw -> UInt32 in
+            let value = raw.loadUnaligned(fromByteOffset: 4, as: UInt32.self)
+            return UInt32(littleEndian: value)
         }
         var output = Data(count: Int(destSize))
         let result = try data.withUnsafeBytes { src in
@@ -43,6 +45,7 @@ public struct BloscCodec: Codec {
 
     public func encode(_ data: Data) throws -> Data {
         let nbytes = data.count
+        // BLOSC_MAX_OVERHEAD is 16 bytes; worst-case compressed output is nbytes + 16.
         let destSize = nbytes + 16
         var output = Data(count: destSize)
         let result = try data.withUnsafeBytes { src in
