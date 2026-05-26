@@ -7,6 +7,10 @@ import Testing
 import FoundationNetworking
 #endif
 
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
+
 let gcsBaseURL = "https://storage.googleapis.com/gcp-public-data-arco-era5"
 let gcsStorePath = "ar/1959-2022-6h-64x32_equiangular_conservative.zarr"
 
@@ -98,4 +102,75 @@ func testGCSListChildren() async throws {
     #expect(names.contains("10m_u_component_of_wind"))
     #expect(names.contains("10m_v_component_of_wind"))
     #expect(children.count >= 4)
+}
+
+// MARK: - S3 ListBucket XML parser tests
+
+@Test
+func testS3ListParserExtractsKeysOnly() throws {
+    let xml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <ListBucketResult>
+      <Contents>
+        <Key>prefix/file1</Key>
+        <Size>100</Size>
+        <LastModified>2024-01-01T00:00:00Z</LastModified>
+        <ETag>"abc123"</ETag>
+      </Contents>
+      <Contents>
+        <Key>prefix/file2</Key>
+        <Size>200</Size>
+        <LastModified>2024-01-02T00:00:00Z</LastModified>
+        <ETag>"def456"</ETag>
+      </Contents>
+      <CommonPrefixes>
+        <Prefix>prefix/subdir/</Prefix>
+      </CommonPrefixes>
+    </ListBucketResult>
+    """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    let parsed = parser.parse()
+    #expect(parsed)
+    #expect(delegate.keys == ["prefix/file1", "prefix/file2"])
+    #expect(delegate.prefixes == ["prefix/subdir/"])
+}
+
+@Test
+func testS3ListParserKeyWithWhitespace() throws {
+    let xml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <ListBucketResult>
+      <Contents>
+        <Key>
+          prefix/file
+        </Key>
+        <Size>100</Size>
+      </Contents>
+    </ListBucketResult>
+    """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    let parsed = parser.parse()
+    #expect(parsed)
+    #expect(delegate.keys == ["prefix/file"])
+    #expect(delegate.prefixes == [])
+}
+
+@Test
+func testS3ListParserEmptyResult() throws {
+    let xml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <ListBucketResult>
+    </ListBucketResult>
+    """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    let parsed = parser.parse()
+    #expect(parsed)
+    #expect(delegate.keys == [])
+    #expect(delegate.prefixes == [])
 }

@@ -159,7 +159,7 @@ public final class S3CompatibleStorage: Storage {
 
 // MARK: - S3 ListBucket XML parser
 
-private final class S3ListParserDelegate: NSObject, XMLParserDelegate {
+internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     private enum State {
         case idle
         case inContents
@@ -167,6 +167,7 @@ private final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     }
 
     private var state: State = .idle
+    private var currentElement = ""
     private var currentValue = ""
     var keys: [String] = []
     var prefixes: [String] = []
@@ -178,6 +179,7 @@ private final class S3ListParserDelegate: NSObject, XMLParserDelegate {
         qualifiedName qName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
+        currentElement = elementName
         switch elementName {
         case "Contents":
             state = .inContents
@@ -186,19 +188,15 @@ private final class S3ListParserDelegate: NSObject, XMLParserDelegate {
             state = .inCommonPrefixes
             currentValue = ""
         case "Key", "Prefix":
-            break
+            currentValue = ""
         default:
             break
         }
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        switch state {
-        case .inContents, .inCommonPrefixes:
-            currentValue += string
-        case .idle:
-            break
-        }
+        guard state != .idle, currentElement == "Key" || currentElement == "Prefix" else { return }
+        currentValue += string
     }
 
     func parser(
@@ -212,9 +210,11 @@ private final class S3ListParserDelegate: NSObject, XMLParserDelegate {
         case "Contents":
             if !value.isEmpty { keys.append(value) }
             state = .idle
+            currentElement = ""
         case "CommonPrefixes":
             if !value.isEmpty { prefixes.append(value) }
             state = .idle
+            currentElement = ""
         default:
             break
         }
