@@ -108,14 +108,17 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
+        } else if let boolVal = try? container.decode(Bool.self) {
+            // Bool must be attempted before Int: Foundation's JSONDecoder can
+            // decode JSON `true`/`false` as Int (yielding 1/0), which would
+            // silently corrupt boolean fill values.
+            self = .bool(boolVal)
         } else if let intVal = try? container.decode(Int.self) {
             self = .int(intVal)
         } else if let doubleVal = try? container.decode(Double.self) {
             self = .double(doubleVal)
         } else if let stringVal = try? container.decode(String.self) {
             self = .string(stringVal)
-        } else if let boolVal = try? container.decode(Bool.self) {
-            self = .bool(boolVal)
         } else if let arrayVal = try? container.decode([ZarrJSONValue].self) {
             self = .array(arrayVal)
         } else {
