@@ -2,7 +2,6 @@ import Foundation
 
 public enum StorageError: Error, Sendable {
     case invalidURL(String)
-    case writeFailed(String)
     case noSuchFile(String)
     case httpError(statusCode: Int, path: String)
     case listFailed(String)

@@ -79,5 +79,4 @@ public enum BloscError: Error, Sendable {
     case invalidData(String)
     case decompressFailed(Int)
     case compressFailed(String)
-    case compressionUnsupported
 }

@@ -34,7 +34,7 @@ public struct V2ArrayMetadata: Codable, Sendable {
 
     // MARK: - Convenience accessors
 
-    public var compressorID: String? {
+    internal var compressorID: String? {
         compressor?["id"]?.value as? String
     }
 }

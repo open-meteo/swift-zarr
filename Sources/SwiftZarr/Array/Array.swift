@@ -19,7 +19,7 @@ public struct ZarrArray: Sendable {
     private let _numChunks: [Int]
     private let _separator: String
     private let _arrayStride: [Int]
-    internal let _orderIsF: Bool
+    private let _orderIsF: Bool
     private let _v3Codecs: [V3Codec]
 
     public var ndim: Int { _shape.count }
