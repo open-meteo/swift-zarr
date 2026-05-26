@@ -1023,6 +1023,35 @@ func testBZip2ArrayWriteRead() async throws {
     #expect(try await array.readRaw() == data)
 }
 
+@Test
+func testLZ4CodecRoundtrip() async throws {
+    let original = int32LERange(100)
+    let compressed = try LZ4Codec().encode(original)
+    #expect(try LZ4Codec().decode(compressed) == original)
+}
+
+@Test
+func testBloscCodecRoundtrip() async throws {
+    let original = int32LERange(100)
+    let compressed = try BloscCodec().encode(original)
+    #expect(try BloscCodec().decode(compressed) == original)
+}
+
+@Test
+func testBloscLZ4HCWorks() async throws {
+    let original = int32LERange(100)
+    let compressed = try BloscCodec(compressorName: "lz4hc").encode(original)
+    #expect(try BloscCodec(compressorName: "lz4hc").decode(compressed) == original)
+}
+
+@Test
+func testBloscUnsupportedCnameFails() async throws {
+    let original = int32LERange(100)
+    #expect(throws: BloscError.self) {
+        try BloscCodec(compressorName: "zstd").encode(original)
+    }
+}
+
 // MARK: - V3 tests
 
 @Test
