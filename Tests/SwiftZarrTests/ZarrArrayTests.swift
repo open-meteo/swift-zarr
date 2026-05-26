@@ -558,7 +558,7 @@ func testFillValueNaNfloat32() async throws {
         chunks: [2].map(UInt64.init),
         dtype: "<f4",
         compressor: nil,
-        fillValue: AnyCodable("NaN"),
+        fillValue: .string("NaN"),
         order: .C,
         filters: nil,
         dimensionSeparator: nil
@@ -589,7 +589,7 @@ func testFillValueInfinityFloat64() async throws {
         chunks: [2].map(UInt64.init),
         dtype: "<f8",
         compressor: nil,
-        fillValue: AnyCodable("Infinity"),
+        fillValue: .string("Infinity"),
         order: .C,
         filters: nil,
         dimensionSeparator: nil
@@ -613,7 +613,7 @@ func testFillValueInteger() async throws {
         chunks: [3].map(UInt64.init),
         dtype: "<i4",
         compressor: nil,
-        fillValue: AnyCodable(-1),
+        fillValue: .int(-1),
         order: .C,
         filters: nil,
         dimensionSeparator: nil
@@ -917,11 +917,11 @@ func testGroupAttrs() async throws {
     let storage = LocalFileStorage(basePath: tmp)
     let group = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
     try await group.storeMetadata()
-    try await group.storeAttributes(V2Attrs(values: ["key1": AnyCodable("value1"), "key2": AnyCodable(42)]))
+    try await group.storeAttributes(V2Attrs(values: ["key1": .string("value1"), "key2": .int(42)]))
 
     let decodedAttrs = try await ZarrGroup(storage: storage, path: "group").attributes()
-    #expect(decodedAttrs?.values["key1"]?.value as? String == "value1")
-    #expect(decodedAttrs?.values["key2"]?.value as? Int == 42)
+    #expect(decodedAttrs?.values["key1"]?.stringValue == "value1")
+    #expect(decodedAttrs?.values["key2"]?.intValue == 42)
 }
 
 @Test
@@ -935,7 +935,7 @@ func testMetadataParsing() async throws {
         chunks: [5].map(UInt64.init),
         dtype: "|i1",
         compressor: nil,
-        fillValue: AnyCodable(42),
+        fillValue: .int(42),
         order: .C,
         filters: nil,
         dimensionSeparator: nil
@@ -946,8 +946,66 @@ func testMetadataParsing() async throws {
     #expect(array.shape == [10])
     #expect(array.chunkShape == [5])
     #expect(array.metadata.dtype == "|i1")
-    #expect(array.metadata.fillValue?.value as? Int == 42)
+    #expect(array.metadata.fillValue?.intValue == 42)
     #expect(array.metadata.order == .C)
+}
+
+@Test
+func testZarrJSONValueArrayRoundtrip() throws {
+    let arr: [ZarrJSONValue] = [.int(1), .double(2.5), .string("three"), .bool(true)]
+    let original = ZarrJSONValue.array(arr)
+    let encoded = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(ZarrJSONValue.self, from: encoded)
+    if case .array(let vals) = decoded {
+        #expect(vals.count == 4)
+        #expect(vals[0].intValue == 1)
+        #expect(vals[1].doubleValue == 2.5)
+        #expect(vals[2].stringValue == "three")
+        #expect(vals[3].boolValue == true)
+    } else {
+        Issue.record("expected .array, got \(decoded)")
+    }
+}
+
+@Test
+func testZarrJSONValueNestedArray() throws {
+    let inner: [ZarrJSONValue] = [.int(1), .int(2)]
+    let outer: [ZarrJSONValue] = [.int(0), .array(inner)]
+    let original = ZarrJSONValue.array(outer)
+    let encoded = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(ZarrJSONValue.self, from: encoded)
+    if case .array(let outerVals) = decoded {
+        #expect(outerVals.count == 2)
+        #expect(outerVals[0].intValue == 0)
+        if case .array(let innerVals) = outerVals[1] {
+            #expect(innerVals.count == 2)
+            #expect(innerVals[0].intValue == 1)
+            #expect(innerVals[1].intValue == 2)
+        } else {
+            Issue.record("expected nested .array")
+        }
+    } else {
+        Issue.record("expected .array")
+    }
+}
+
+@Test
+func testZarrJSONValueArrayInAttrs() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let attrs = V2Attrs(values: ["tags": .array([.string("a"), .string("b")])])
+    let storage = LocalFileStorage(basePath: tmp)
+    let group = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "g")
+    try await group.storeMetadata()
+    try await group.storeAttributes(attrs)
+
+    let reopened = try await ZarrGroup(storage: storage, path: "g")
+    let decoded = try await reopened.attributes()
+    let tags = decoded?.values["tags"]?.arrayValue
+    #expect(tags?.count == 2)
+    #expect(tags?[0].stringValue == "a")
+    #expect(tags?[1].stringValue == "b")
 }
 
 @Test
@@ -980,7 +1038,7 @@ func testGzipArrayWriteRead() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let data = int32LERange(24)
-    let compressor: [String: AnyCodable] = ["id": AnyCodable("gzip"), "level": AnyCodable(5)]
+    let compressor: [String: ZarrJSONValue] = ["id": .string("gzip"), "level": .int(5)]
     let meta = V2ArrayMetadata(
         zarrFormat: 2,
         shape: [4, 6].map(UInt64.init),
@@ -1005,7 +1063,7 @@ func testGzipChunkRead() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let data = int32LERange(10)
-    let compressor: [String: AnyCodable] = ["id": AnyCodable("gzip"), "level": AnyCodable(5)]
+    let compressor: [String: ZarrJSONValue] = ["id": .string("gzip"), "level": .int(5)]
     let meta = V2ArrayMetadata(
         zarrFormat: 2,
         shape: [10].map(UInt64.init),
@@ -1042,7 +1100,7 @@ func testZlibArrayWriteRead() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let data = int32LERange(24)
-    let compressor: [String: AnyCodable] = ["id": AnyCodable("zlib"), "level": AnyCodable(5)]
+    let compressor: [String: ZarrJSONValue] = ["id": .string("zlib"), "level": .int(5)]
     let meta = V2ArrayMetadata(
         zarrFormat: 2,
         shape: [4, 6].map(UInt64.init),
@@ -1075,7 +1133,7 @@ func testBZip2ArrayWriteRead() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let data = int32LERange(24)
-    let compressor: [String: AnyCodable] = ["id": AnyCodable("bz2"), "level": AnyCodable(5)]
+    let compressor: [String: ZarrJSONValue] = ["id": .string("bz2"), "level": .int(5)]
     let meta = V2ArrayMetadata(
         zarrFormat: 2,
         shape: [4, 6].map(UInt64.init),
@@ -1195,7 +1253,7 @@ func testV3GroupAttrs() async throws {
     let v3meta = V3GroupMetadata(
         zarrFormat: 3,
         nodeType: "group",
-        attributes: ["key1": AnyCodable("v3value"), "key2": AnyCodable(99)]
+        attributes: ["key1": .string("v3value"), "key2": .int(99)]
     )
     let storage = LocalFileStorage(basePath: tmp)
     let group = ZarrGroup(v3Metadata: v3meta, storage: storage, path: "v3group")
@@ -1203,8 +1261,8 @@ func testV3GroupAttrs() async throws {
 
     let reopened = try await ZarrGroup(storage: storage, path: "v3group")
     let attrs = try await reopened.attributes()
-    #expect(attrs?.values["key1"]?.value as? String == "v3value")
-    #expect(attrs?.values["key2"]?.value as? Int == 99)
+    #expect(attrs?.values["key1"]?.stringValue == "v3value")
+    #expect(attrs?.values["key2"]?.intValue == 99)
 }
 
 @Test
@@ -1262,7 +1320,7 @@ func testV3CompressorRoundtrip() async throws {
     let data = int32LERange(24)
     let shape: [UInt64] = [4, 6]
     let chunkShape: [UInt64] = [2, 3]
-    let codecs = [V3Codec(name: "gzip", configuration: ["level": AnyCodable(5)])]
+    let codecs = [V3Codec(name: "gzip", configuration: ["level": .int(5)])]
     let v3meta = V3ArrayMetadata(
         zarrFormat: 3,
         nodeType: "array",

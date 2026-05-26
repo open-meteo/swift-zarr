@@ -13,10 +13,10 @@ public struct V2ArrayMetadata: Codable, Sendable {
     public let shape: [UInt64]
     public let chunks: [UInt64]
     public let dtype: String
-    public let compressor: [String: AnyCodable]?
-    public let fillValue: AnyCodable?
+    public let compressor: [String: ZarrJSONValue]?
+    public let fillValue: ZarrJSONValue?
     public let order: Order?
-    public let filters: [[String: AnyCodable]]?
+    public let filters: [[String: ZarrJSONValue]]?
     public let dimensionSeparator: String?
 
     public enum Order: String, Codable, Sendable {
@@ -35,22 +35,22 @@ public struct V2ArrayMetadata: Codable, Sendable {
     // MARK: - Convenience accessors
 
     internal var compressorID: String? {
-        compressor?["id"]?.value as? String
+        compressor?["id"]?.stringValue
     }
 }
 
 public struct V2Attrs: Codable, Sendable {
-    public let values: [String: AnyCodable]
+    public let values: [String: ZarrJSONValue]
 
-    public init(values: [String: AnyCodable]) {
+    public init(values: [String: ZarrJSONValue]) {
         self.values = values
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: AnyKey.self)
-        var result: [String: AnyCodable] = [:]
+        var result: [String: ZarrJSONValue] = [:]
         for key in container.allKeys {
-            result[key.stringValue] = try container.decode(AnyCodable.self, forKey: key)
+            result[key.stringValue] = try container.decode(ZarrJSONValue.self, forKey: key)
         }
         values = result
     }
@@ -62,21 +62,10 @@ public struct V2Attrs: Codable, Sendable {
         }
     }
 
-    public func string(for key: String) -> String? {
-        values[key]?.value as? String
-    }
-
-    public func int(for key: String) -> Int? {
-        values[key]?.value as? Int
-    }
-
-    public func double(for key: String) -> Double? {
-        values[key]?.value as? Double
-    }
-
-    public func bool(for key: String) -> Bool? {
-        values[key]?.value as? Bool
-    }
+    public func string(for key: String) -> String? { values[key]?.stringValue }
+    public func int(for key: String) -> Int? { values[key]?.intValue }
+    public func double(for key: String) -> Double? { values[key]?.doubleValue }
+    public func bool(for key: String) -> Bool? { values[key]?.boolValue }
 
     private struct AnyKey: CodingKey {
         let stringValue: String
@@ -86,61 +75,64 @@ public struct V2Attrs: Codable, Sendable {
     }
 }
 
-public struct AnyCodable: Codable, Sendable {
-    internal enum Storage: Sendable {
-        case int(Int)
-        case double(Double)
-        case string(String)
-        case bool(Bool)
-        case dict([String: AnyCodable])
+public enum ZarrJSONValue: Codable, Sendable, Equatable {
+    case null
+    case int(Int)
+    case double(Double)
+    case string(String)
+    case bool(Bool)
+    case array([ZarrJSONValue])
+    case object([String: ZarrJSONValue])
+
+    public var intValue: Int? {
+        if case .int(let v) = self { v } else { nil }
     }
 
-    internal let storage: Storage
-
-    public var value: Any {
-        switch storage {
-        case .int(let v): v
-        case .double(let v): v
-        case .string(let v): v
-        case .bool(let v): v
-        case .dict(let v): v
-        }
+    public var doubleValue: Double? {
+        if case .double(let v) = self { v } else { nil }
     }
 
-    public init(_ value: Any) {
-        switch value {
-        case let v as Int: storage = .int(v)
-        case let v as Double: storage = .double(v)
-        case let v as String: storage = .string(v)
-        case let v as Bool: storage = .bool(v)
-        case let v as [String: AnyCodable]: storage = .dict(v)
-        default: storage = .string("\(value)")
-        }
+    public var stringValue: String? {
+        if case .string(let v) = self { v } else { nil }
+    }
+
+    public var boolValue: Bool? {
+        if case .bool(let v) = self { v } else { nil }
+    }
+
+    public var arrayValue: [ZarrJSONValue]? {
+        if case .array(let v) = self { v } else { nil }
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let intVal = try? container.decode(Int.self) {
-            storage = .int(intVal)
+        if container.decodeNil() {
+            self = .null
+        } else if let intVal = try? container.decode(Int.self) {
+            self = .int(intVal)
         } else if let doubleVal = try? container.decode(Double.self) {
-            storage = .double(doubleVal)
+            self = .double(doubleVal)
         } else if let stringVal = try? container.decode(String.self) {
-            storage = .string(stringVal)
+            self = .string(stringVal)
         } else if let boolVal = try? container.decode(Bool.self) {
-            storage = .bool(boolVal)
+            self = .bool(boolVal)
+        } else if let arrayVal = try? container.decode([ZarrJSONValue].self) {
+            self = .array(arrayVal)
         } else {
-            storage = .dict(try container.decode([String: AnyCodable].self))
+            self = .object(try container.decode([String: ZarrJSONValue].self))
         }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        switch storage {
+        switch self {
+        case .null: try container.encodeNil()
         case .int(let v): try container.encode(v)
         case .double(let v): try container.encode(v)
         case .string(let v): try container.encode(v)
         case .bool(let v): try container.encode(v)
-        case .dict(let v): try container.encode(v)
+        case .array(let v): try container.encode(v)
+        case .object(let v): try container.encode(v)
         }
     }
 }

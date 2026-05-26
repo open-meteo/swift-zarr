@@ -536,17 +536,17 @@ public struct ZarrArray: Sendable {
             let c = ZlibCodec()
             return direction == .encode ? try c.encode(data) : try c.decode(data)
         case "bz2":
-            let level = codec.configuration?["level"]?.value as? Int ?? 5
+            let level = codec.configuration?["level"]?.intValue ?? 5
             let c = BZip2Codec(level: level)
             return direction == .encode ? try c.encode(data) : try c.decode(data)
         case "lz4":
             let c = LZ4Codec()
             return direction == .encode ? try c.encode(data) : try c.decode(data)
         case "blosc":
-            let cname = codec.configuration?["cname"]?.value as? String ?? "lz4"
-            let clevel = CInt(codec.configuration?["clevel"]?.value as? Int ?? 5)
-            let shuffle = CInt(codec.configuration?["shuffle"]?.value as? Int ?? 1)
-            let typesize = codec.configuration?["typesize"]?.value as? Int ?? dataType.elementSize
+            let cname = codec.configuration?["cname"]?.stringValue ?? "lz4"
+            let clevel = CInt(codec.configuration?["clevel"]?.intValue ?? 5)
+            let shuffle = CInt(codec.configuration?["shuffle"]?.intValue ?? 1)
+            let typesize = codec.configuration?["typesize"]?.intValue ?? dataType.elementSize
             let c = BloscCodec(clevel: clevel, shuffle: shuffle, typesize: typesize, compressorName: cname)
             return direction == .encode ? try c.encode(data) : try c.decode(data)
         default:
@@ -577,94 +577,58 @@ public struct ZarrArray: Sendable {
     }
 
     private func fillValueAsData() -> Data? {
-        guard let fillValue = metadata.fillValue?.value else { return nil }
+        guard let fillValue = metadata.fillValue else { return nil }
         let size = dataType.elementSize
 
-        if let string = fillValue as? String {
-            return fillValueFromString(string, size: size)
-        }
-        if let bool = fillValue as? Bool {
-            return Data([bool ? 1 : 0])
-        }
-
-        switch dataType.kind {
-        case .int:
-            let v: Int64
-            if let x = fillValue as? Int {
-                v = Int64(x)
-            } else if let x = fillValue as? Int32 {
-                v = Int64(x)
-            } else if let x = fillValue as? Int64 {
-                v = x
-            } else if let x = fillValue as? Int16 {
-                v = Int64(x)
-            } else if let x = fillValue as? Int8 {
-                v = Int64(x)
-            } else {
-                return nil
-            }
-            switch size {
-            case 1: return dataType.data(from: Int8(truncatingIfNeeded: v))
-            case 2: return dataType.data(from: Int16(truncatingIfNeeded: v))
-            case 4: return dataType.data(from: Int32(truncatingIfNeeded: v))
-            case 8: return dataType.data(from: v)
-            default: return nil
-            }
-        case .uint:
-            let v: UInt64
-            if let x = fillValue as? UInt {
-                v = UInt64(x)
-            } else if let x = fillValue as? UInt32 {
-                v = UInt64(x)
-            } else if let x = fillValue as? UInt64 {
-                v = x
-            } else if let x = fillValue as? UInt16 {
-                v = UInt64(x)
-            } else if let x = fillValue as? UInt8 {
-                v = UInt64(x)
-            } else {
-                return nil
-            }
-            switch size {
-            case 1: return dataType.data(from: UInt8(truncatingIfNeeded: v))
-            case 2: return dataType.data(from: UInt16(truncatingIfNeeded: v))
-            case 4: return dataType.data(from: UInt32(truncatingIfNeeded: v))
-            case 8: return dataType.data(from: v)
-            default: return nil
-            }
-        case .float:
-            switch size {
-            case 4:
-                let v: Float
-                if let x = fillValue as? Float {
-                    v = x
-                } else if let x = fillValue as? Double {
-                    v = Float(x)
-                } else if let x = fillValue as? Int {
-                    v = Float(x)
-                } else {
-                    return nil
-                }
-                return dataType.data(from: v)
-            case 8:
-                let v: Double
-                if let x = fillValue as? Double {
-                    v = x
-                } else if let x = fillValue as? Float {
-                    v = Double(x)
-                } else if let x = fillValue as? Int {
-                    v = Double(x)
-                } else {
-                    return nil
-                }
-                return dataType.data(from: v)
-            default: return nil
-            }
-        case .bool:
-            if let b = fillValue as? Bool { return Data([b ? 1 : 0]) }
+        switch fillValue {
+        case .null:
             return nil
-        case .complex:
-            return Data(repeating: 0, count: size)
+        case .string(let string):
+            return fillValueFromString(string, size: size)
+        case .bool(let b):
+            return Data([b ? 1 : 0])
+        case .int(let v):
+            switch dataType.kind {
+            case .int:
+                switch size {
+                case 1: return dataType.data(from: Int8(truncatingIfNeeded: v))
+                case 2: return dataType.data(from: Int16(truncatingIfNeeded: v))
+                case 4: return dataType.data(from: Int32(truncatingIfNeeded: v))
+                case 8: return dataType.data(from: Int64(v))
+                default: return nil
+                }
+            case .uint:
+                switch size {
+                case 1: return dataType.data(from: UInt8(truncatingIfNeeded: v))
+                case 2: return dataType.data(from: UInt16(truncatingIfNeeded: v))
+                case 4: return dataType.data(from: UInt32(truncatingIfNeeded: v))
+                case 8: return dataType.data(from: UInt64(v))
+                default: return nil
+                }
+            case .float:
+                if size == 4 { return dataType.data(from: Float(v)) }
+                return dataType.data(from: Double(v))
+            case .bool:
+                return Data([v == 0 ? 0 : 1])
+            case .complex:
+                return Data(repeating: 0, count: size)
+            }
+        case .double(let v):
+            switch dataType.kind {
+            case .float where size == 4: return dataType.data(from: Float(v))
+            case .float: return dataType.data(from: v)
+            case .int:
+                let iv = Int64(v)
+                switch size {
+                case 1: return dataType.data(from: Int8(truncatingIfNeeded: iv))
+                case 2: return dataType.data(from: Int16(truncatingIfNeeded: iv))
+                case 4: return dataType.data(from: Int32(truncatingIfNeeded: iv))
+                default: return dataType.data(from: iv)
+                }
+            default: return nil
+            }
+        case .array, .object:
+            return nil
         }
     }
 

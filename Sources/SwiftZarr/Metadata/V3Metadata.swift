@@ -8,11 +8,11 @@ public struct V3ArrayMetadata: Codable, Sendable {
     public let dataType: String
     public let chunkGrid: ChunkGrid
     public let chunkKeyEncoding: ChunkKeyEncoding?
-    public let fillValue: AnyCodable?
+    public let fillValue: ZarrJSONValue?
     public let codecs: [V3Codec]?
-    public let storageTransformers: [AnyCodable]?
+    public let storageTransformers: [ZarrJSONValue]?
     public let dimensionNames: [String]?
-    public let attributes: [String: AnyCodable]?
+    public let attributes: [String: ZarrJSONValue]?
 
     public struct ChunkGrid: Codable, Sendable {
         public let name: String
@@ -51,7 +51,7 @@ public struct V3ArrayMetadata: Codable, Sendable {
 public struct V3GroupMetadata: Codable, Sendable {
     public let zarrFormat: Int
     public let nodeType: String
-    public let attributes: [String: AnyCodable]?
+    public let attributes: [String: ZarrJSONValue]?
 
     enum CodingKeys: String, CodingKey {
         case zarrFormat = "zarr_format"
@@ -63,7 +63,7 @@ public struct V3GroupMetadata: Codable, Sendable {
 /// A single codec entry in a V3 codec pipeline.
 public struct V3Codec: Codable, Sendable {
     public let name: String
-    public let configuration: [String: AnyCodable]?
+    public let configuration: [String: ZarrJSONValue]?
 
     /// Normalize a V3 codec name (URL or short name) to a short name.
     public var shortName: String {
@@ -85,13 +85,13 @@ public enum ZarrVersion: String, Sendable, Equatable {
 }
 
 /// Convert V3 metadata fields to a V2-compatible compressor dictionary.
-func v3CodecsToV2Compressor(_ codecs: [V3Codec]?) -> [String: AnyCodable]? {
+func v3CodecsToV2Compressor(_ codecs: [V3Codec]?) -> [String: ZarrJSONValue]? {
     guard let codecs = codecs else { return nil }
     for codec in codecs {
         let shortName = codec.shortName
         switch shortName {
         case "gzip", "blosc", "zlib", "bz2":
-            var config: [String: AnyCodable] = ["id": AnyCodable(shortName)]
+            var config: [String: ZarrJSONValue] = ["id": .string(shortName)]
             if let cfg = codec.configuration {
                 for (key, value) in cfg {
                     config[key] = value
@@ -106,9 +106,9 @@ func v3CodecsToV2Compressor(_ codecs: [V3Codec]?) -> [String: AnyCodable]? {
 }
 
 /// Convert a V2 compressor dictionary to a V3 codec array.
-func compressorDictToV3Codecs(_ compressor: [String: AnyCodable]) -> [V3Codec] {
-    guard let id = compressor["id"]?.value as? String else { return [] }
-    var config: [String: AnyCodable] = [:]
+func compressorDictToV3Codecs(_ compressor: [String: ZarrJSONValue]) -> [V3Codec] {
+    guard case .string(let id) = compressor["id"] else { return [] }
+    var config: [String: ZarrJSONValue] = [:]
     for (key, value) in compressor where key != "id" {
         config[key] = value
     }
