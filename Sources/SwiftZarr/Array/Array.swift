@@ -45,7 +45,7 @@ public struct ZarrArray: Sendable {
                 fillValue: v3meta.fillValue,
                 order: .C,
                 filters: nil,
-                dimensionSeparator: v3meta.chunkKeyEncoding?.configuration?.separator
+                dimensionSeparator: v3meta.chunkKeyEncoding?.configuration?.separator ?? "/"
             )
             self.metadata = v2meta
             (dataType, _shape, _chunkShape, _separator, _numChunks, _arrayStride, _orderIsF) =
@@ -90,7 +90,7 @@ public struct ZarrArray: Sendable {
             fillValue: v3Metadata.fillValue,
             order: .C,
             filters: nil,
-            dimensionSeparator: v3Metadata.chunkKeyEncoding?.configuration?.separator
+            dimensionSeparator: v3Metadata.chunkKeyEncoding?.configuration?.separator ?? "/"
         )
         self.metadata = v2meta
         (dataType, _shape, _chunkShape, _separator, _numChunks, _arrayStride, _orderIsF) =
