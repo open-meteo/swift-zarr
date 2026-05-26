@@ -1188,6 +1188,26 @@ func testV3GroupWriteRead() async throws {
 }
 
 @Test
+func testV3GroupAttrs() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+    let v3meta = V3GroupMetadata(
+        zarrFormat: 3,
+        nodeType: "group",
+        attributes: ["key1": AnyCodable("v3value"), "key2": AnyCodable(99)]
+    )
+    let storage = LocalFileStorage(basePath: tmp)
+    let group = ZarrGroup(v3Metadata: v3meta, storage: storage, path: "v3group")
+    try await group.storeMetadata()
+
+    let reopened = try await ZarrGroup(storage: storage, path: "v3group")
+    let attrs = try await reopened.attributes()
+    #expect(attrs?.values["key1"]?.value as? String == "v3value")
+    #expect(attrs?.values["key2"]?.value as? Int == 99)
+}
+
+@Test
 func testV3NestedGroups() async throws {
     let tmp = try createTempDir()
     defer { try? FileManager.default.removeItem(atPath: tmp) }
