@@ -1,11 +1,11 @@
 import Foundation
 
 public enum ZarrElementError: Error, Sendable {
-    case typeMismatch(expectedKind: String, expectedSize: Int, actualDtype: String)
+    case typeMismatch(expected: ZarrDataType.Kind, expectedSize: Int, actual: ZarrDataType)
 }
 
 public protocol ZarrElement: Sendable {
-    static var zarrDtypeKind: String { get }
+    static var zarrDtypeKind: ZarrDataType.Kind { get }
     static var zarrDtypeSize: Int { get }
     static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Self]
 }
@@ -13,13 +13,13 @@ public protocol ZarrElement: Sendable {
 // MARK: - Floating point
 
 extension Float: ZarrElement {
-    public static var zarrDtypeKind: String { "f" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .float }
     public static var zarrDtypeSize: Int { 4 }
 
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Float] {
         let count = data.count / MemoryLayout<Float>.size
         var result = [Float](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in
+        _ = result.withUnsafeMutableBytes { dest in
             data.copyBytes(to: dest, from: data.startIndex..<data.endIndex)
         }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
@@ -30,13 +30,13 @@ extension Float: ZarrElement {
 }
 
 extension Double: ZarrElement {
-    public static var zarrDtypeKind: String { "f" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .float }
     public static var zarrDtypeSize: Int { 8 }
 
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Double] {
         let count = data.count / MemoryLayout<Double>.size
         var result = [Double](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in
+        _ = result.withUnsafeMutableBytes { dest in
             data.copyBytes(to: dest, from: data.startIndex..<data.endIndex)
         }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
@@ -49,7 +49,7 @@ extension Double: ZarrElement {
 // MARK: - Signed integers
 
 extension Int8: ZarrElement {
-    public static var zarrDtypeKind: String { "i" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 1 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int8] {
         data.map { Int8(bitPattern: $0) }
@@ -57,12 +57,12 @@ extension Int8: ZarrElement {
 }
 
 extension Int16: ZarrElement {
-    public static var zarrDtypeKind: String { "i" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 2 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int16] {
         let count = data.count / MemoryLayout<Int16>.size
         var result = [Int16](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { $0.byteSwapped }
         }
@@ -71,12 +71,12 @@ extension Int16: ZarrElement {
 }
 
 extension Int32: ZarrElement {
-    public static var zarrDtypeKind: String { "i" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 4 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int32] {
         let count = data.count / MemoryLayout<Int32>.size
         var result = [Int32](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { $0.byteSwapped }
         }
@@ -85,12 +85,12 @@ extension Int32: ZarrElement {
 }
 
 extension Int64: ZarrElement {
-    public static var zarrDtypeKind: String { "i" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 8 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int64] {
         let count = data.count / MemoryLayout<Int64>.size
         var result = [Int64](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { $0.byteSwapped }
         }
@@ -101,7 +101,7 @@ extension Int64: ZarrElement {
 // MARK: - Unsigned integers
 
 extension UInt8: ZarrElement {
-    public static var zarrDtypeKind: String { "u" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 1 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt8] {
         [UInt8](data)
@@ -109,12 +109,12 @@ extension UInt8: ZarrElement {
 }
 
 extension UInt16: ZarrElement {
-    public static var zarrDtypeKind: String { "u" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 2 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt16] {
         let count = data.count / MemoryLayout<UInt16>.size
         var result = [UInt16](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { $0.byteSwapped }
         }
@@ -123,12 +123,12 @@ extension UInt16: ZarrElement {
 }
 
 extension UInt32: ZarrElement {
-    public static var zarrDtypeKind: String { "u" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 4 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt32] {
         let count = data.count / MemoryLayout<UInt32>.size
         var result = [UInt32](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { $0.byteSwapped }
         }
@@ -137,12 +137,12 @@ extension UInt32: ZarrElement {
 }
 
 extension UInt64: ZarrElement {
-    public static var zarrDtypeKind: String { "u" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 8 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt64] {
         let count = data.count / MemoryLayout<UInt64>.size
         var result = [UInt64](repeating: 0, count: count)
-        let _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { $0.byteSwapped }
         }
@@ -153,7 +153,7 @@ extension UInt64: ZarrElement {
 // MARK: - Bool
 
 extension Bool: ZarrElement {
-    public static var zarrDtypeKind: String { "b" }
+    public static var zarrDtypeKind: ZarrDataType.Kind { .bool }
     public static var zarrDtypeSize: Int { 1 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Bool] {
         data.map { $0 != 0 }

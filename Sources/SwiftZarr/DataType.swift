@@ -40,7 +40,7 @@ public struct ZarrDataType: Sendable, Equatable {
     }
 
     public func matches<T: ZarrElement>(type: T.Type) -> Bool {
-        kind.rawValue == T.zarrDtypeKind && size == T.zarrDtypeSize
+        kind == T.zarrDtypeKind && size == T.zarrDtypeSize
     }
 }
 
@@ -58,7 +58,7 @@ extension ZarrDataType {
     }
 }
 
-public let isLittleEndian: Bool = {
+internal let isLittleEndian: Bool = {
     let number: UInt16 = 1
     return number.littleEndian == 1
 }()
