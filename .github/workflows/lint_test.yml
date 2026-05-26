@@ -16,6 +16,8 @@ jobs:
     name: ${{ matrix.os }} (Swift ${{ matrix.swift }})
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
 
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
@@ -49,6 +51,8 @@ jobs:
     name: Lint (Swift 6)
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
 
       - uses: swift-actions/setup-swift@v3
         with:
