@@ -52,7 +52,7 @@ public final class S3CompatibleStorage: Storage {
         return request
     }
 
-    private func parseListingResponse(data: Data, prefix: String) throws -> (keys: [String], prefixes: [String]) {
+    private func parseListingResponse(data: Data) throws -> (keys: [String], prefixes: [String]) {
         let parser = XMLParser(data: data)
         let delegate = S3ListParserDelegate()
         parser.delegate = delegate
@@ -103,7 +103,7 @@ public final class S3CompatibleStorage: Storage {
         guard (200...299).contains(httpResponse.statusCode) else {
             throw StorageError.httpError(statusCode: httpResponse.statusCode, path: prefix)
         }
-        let (keys, prefixes) = try parseListingResponse(data: data, prefix: prefix)
+        let (keys, prefixes) = try parseListingResponse(data: data)
         return keys + prefixes
     }
 
@@ -118,7 +118,7 @@ public final class S3CompatibleStorage: Storage {
         guard (200...299).contains(httpResponse.statusCode) else {
             throw StorageError.httpError(statusCode: httpResponse.statusCode, path: prefix)
         }
-        let (_, prefixes) = try parseListingResponse(data: data, prefix: prefix)
+        let (_, prefixes) = try parseListingResponse(data: data)
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
         return prefixes.map {
             var name = $0

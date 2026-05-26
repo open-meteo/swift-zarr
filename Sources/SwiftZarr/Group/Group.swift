@@ -20,7 +20,7 @@ public struct ZarrGroup: Sendable {
     public let path: String
     public let metadata: V2GroupMetadata
     public let version: ZarrVersion
-    internal var v3Metadata: V3GroupMetadata?
+    private let v3Metadata: V3GroupMetadata?
 
     public init(storage: any Storage, path: String) async throws {
         self.storage = storage

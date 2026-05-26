@@ -37,8 +37,16 @@ public final class LocalFileStorage: Storage {
 
     public func write(path: String, data: Data) async throws {
         let url = baseURL.appendingPathComponent(path)
-        try FileManager.createIntermediateDirectories(for: url)
-        try data.write(to: url)
+        do {
+            try FileManager.createIntermediateDirectories(for: url)
+            try data.write(to: url)
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileNoSuchFileError {
+                throw StorageError.noSuchFile(path)
+            }
+            throw StorageError.writeFailed(path: path, underlying: error)
+        }
     }
 
     public func list(prefix: String) async throws -> [String] {
@@ -58,17 +66,19 @@ public final class LocalFileStorage: Storage {
 
     public func listDir(prefix: String) async throws -> [String] {
         let url = baseURL.appendingPathComponent(prefix)
-        guard let enumerator = fileManager.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsSubdirectoryDescendants]
-        ) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: url,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsSubdirectoryDescendants]
+            )
+        else {
             return []
         }
         let dirPrefix = baseURL.path + "/" + prefix + "/"
         return enumerator.compactMap { (entry: Any) -> String? in
             guard let fileURL = entry as? URL,
-                  (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
             else { return nil }
             let fullPath = fileURL.path
             guard fullPath.hasPrefix(dirPrefix) else { return nil }
@@ -83,6 +93,16 @@ public final class LocalFileStorage: Storage {
 
     public func delete(path: String) async throws {
         let url = baseURL.appendingPathComponent(path)
-        try fileManager.removeItem(at: url)
+        do {
+            try fileManager.removeItem(at: url)
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == NSCocoaErrorDomain,
+               (nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError)
+            {
+                throw StorageError.noSuchFile(path)
+            }
+            throw StorageError.deleteFailed(path: path, underlying: error)
+        }
     }
 }

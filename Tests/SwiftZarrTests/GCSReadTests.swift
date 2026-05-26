@@ -109,25 +109,25 @@ func testGCSListChildren() async throws {
 @Test
 func testS3ListParserExtractsKeysOnly() throws {
     let xml = """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <ListBucketResult>
-      <Contents>
-        <Key>prefix/file1</Key>
-        <Size>100</Size>
-        <LastModified>2024-01-01T00:00:00Z</LastModified>
-        <ETag>"abc123"</ETag>
-      </Contents>
-      <Contents>
-        <Key>prefix/file2</Key>
-        <Size>200</Size>
-        <LastModified>2024-01-02T00:00:00Z</LastModified>
-        <ETag>"def456"</ETag>
-      </Contents>
-      <CommonPrefixes>
-        <Prefix>prefix/subdir/</Prefix>
-      </CommonPrefixes>
-    </ListBucketResult>
-    """.data(using: .utf8)!
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <Contents>
+            <Key>prefix/file1</Key>
+            <Size>100</Size>
+            <LastModified>2024-01-01T00:00:00Z</LastModified>
+            <ETag>"abc123"</ETag>
+          </Contents>
+          <Contents>
+            <Key>prefix/file2</Key>
+            <Size>200</Size>
+            <LastModified>2024-01-02T00:00:00Z</LastModified>
+            <ETag>"def456"</ETag>
+          </Contents>
+          <CommonPrefixes>
+            <Prefix>prefix/subdir/</Prefix>
+          </CommonPrefixes>
+        </ListBucketResult>
+        """.data(using: .utf8)!
     let parser = XMLParser(data: xml)
     let delegate = S3ListParserDelegate()
     parser.delegate = delegate
@@ -140,16 +140,16 @@ func testS3ListParserExtractsKeysOnly() throws {
 @Test
 func testS3ListParserKeyWithWhitespace() throws {
     let xml = """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <ListBucketResult>
-      <Contents>
-        <Key>
-          prefix/file
-        </Key>
-        <Size>100</Size>
-      </Contents>
-    </ListBucketResult>
-    """.data(using: .utf8)!
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <Contents>
+            <Key>
+              prefix/file
+            </Key>
+            <Size>100</Size>
+          </Contents>
+        </ListBucketResult>
+        """.data(using: .utf8)!
     let parser = XMLParser(data: xml)
     let delegate = S3ListParserDelegate()
     parser.delegate = delegate
@@ -162,10 +162,10 @@ func testS3ListParserKeyWithWhitespace() throws {
 @Test
 func testS3ListParserEmptyResult() throws {
     let xml = """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <ListBucketResult>
-    </ListBucketResult>
-    """.data(using: .utf8)!
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+        </ListBucketResult>
+        """.data(using: .utf8)!
     let parser = XMLParser(data: xml)
     let delegate = S3ListParserDelegate()
     parser.delegate = delegate

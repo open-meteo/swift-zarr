@@ -5,6 +5,8 @@ public enum StorageError: Error, Sendable {
     case noSuchFile(String)
     case httpError(statusCode: Int, path: String)
     case listFailed(String)
+    case writeFailed(path: String, underlying: any Error & Sendable)
+    case deleteFailed(path: String, underlying: any Error & Sendable)
 }
 
 public protocol Storage: Sendable {
