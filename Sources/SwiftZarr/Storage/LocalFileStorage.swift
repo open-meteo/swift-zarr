@@ -9,11 +9,9 @@ extension FileManager {
 
 public final class LocalFileStorage: Storage {
     private let baseURL: URL
-    private let fileManager: FileManager
 
     public init(basePath: String) {
         self.baseURL = URL(fileURLWithPath: basePath).standardized
-        self.fileManager = FileManager.default
     }
 
     public func read(path: String) async throws -> Data {
@@ -52,7 +50,7 @@ public final class LocalFileStorage: Storage {
     public func list(prefix: String) async throws -> [String] {
         let url = baseURL.appendingPathComponent(prefix)
         guard
-            let enumerator = fileManager.enumerator(
+            let enumerator = FileManager.default.enumerator(
                 at: url,
                 includingPropertiesForKeys: nil
             )
@@ -67,7 +65,7 @@ public final class LocalFileStorage: Storage {
     public func listDir(prefix: String) async throws -> [String] {
         let url = baseURL.appendingPathComponent(prefix)
         guard
-            let enumerator = fileManager.enumerator(
+            let enumerator = FileManager.default.enumerator(
                 at: url,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsSubdirectoryDescendants]
@@ -88,13 +86,13 @@ public final class LocalFileStorage: Storage {
 
     public func exists(path: String) async throws -> Bool {
         let url = baseURL.appendingPathComponent(path)
-        return fileManager.fileExists(atPath: url.path)
+        return FileManager.default.fileExists(atPath: url.path)
     }
 
     public func delete(path: String) async throws {
         let url = baseURL.appendingPathComponent(path)
         do {
-            try fileManager.removeItem(at: url)
+            try FileManager.default.removeItem(at: url)
         } catch {
             let nsError = error as NSError
             if nsError.domain == NSCocoaErrorDomain,
