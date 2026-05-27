@@ -11,7 +11,7 @@ public final class LocalFileStorage: Storage {
     private let baseURL: URL
 
     public init(basePath: String) {
-        self.baseURL = URL(fileURLWithPath: basePath).standardized
+        self.baseURL = URL(filePath: basePath).standardized
     }
 
     public func read(path: String) async throws -> Data {
@@ -73,14 +73,16 @@ public final class LocalFileStorage: Storage {
         else {
             return []
         }
-        let dirPrefix = url.path + "/"
-        return enumerator.compactMap { (entry: Any) -> String? in
-            guard let fileURL = entry as? URL,
-                (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
-            else { return nil }
-            let fullPath = fileURL.path
-            guard fullPath.hasPrefix(dirPrefix) else { return nil }
-            return String(fullPath.dropFirst(dirPrefix.count))
+        return try enumerator.compactMap { entry -> String? in
+            guard let fileURL = entry as? URL else {
+                throw StorageError.noSuchFile("Could not cast to url")
+            }
+            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values?.isDirectory == true else {
+                return nil
+            }
+            // enumerator skipsSubdirectoryDescendants ensures we only enumerate one step
+            return fileURL.lastPathComponent
         }
     }
 
