@@ -57,9 +57,9 @@ public final class LocalFileStorage: Storage {
         else {
             return []
         }
-        let basePath = baseURL.path
+        let basePath = url.path + "/"
         return enumerator.compactMap { ($0 as? URL)?.path }
-            .map { String($0.dropFirst(basePath.count + 1)) }
+            .map { String($0.dropFirst(basePath.count)) }
     }
 
     public func listDir(prefix: String) async throws -> [String] {
@@ -73,7 +73,7 @@ public final class LocalFileStorage: Storage {
         else {
             return []
         }
-        let dirPrefix = baseURL.path + "/" + prefix + "/"
+        let dirPrefix = url.path + "/"
         return enumerator.compactMap { (entry: Any) -> String? in
             guard let fileURL = entry as? URL,
                 (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
