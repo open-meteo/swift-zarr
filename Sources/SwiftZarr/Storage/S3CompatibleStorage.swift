@@ -1,39 +1,46 @@
 import Foundation
+import AsyncHTTPClient
+import NIOCore
+import NIOHTTP1
 
 #if canImport(FoundationXML)
 import FoundationXML
 #endif
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
 
 public final class S3CompatibleStorage: Storage {
     private let baseURL: URL
-    private let session: URLSession
+    private let httpClient: HTTPClient
     private let additionalHeaders: [String: String]
 
+    /// - Parameters:
+    ///   - baseURL: Base URL of the S3-compatible endpoint, e.g. `"https://s3.amazonaws.com/my-bucket"`.
+    ///   - httpClient: The `AsyncHTTPClient.HTTPClient` instance to use. Defaults to `.shared`.
+    ///   - additionalHeaders: Extra HTTP headers added to every request (e.g. auth tokens).
     public init(
         baseURL: String,
-        session: URLSession = .shared,
+        httpClient: HTTPClient = .shared,
         additionalHeaders: [String: String] = [:]
     ) throws {
         guard let url = URL(string: baseURL) else {
             throw StorageError.invalidURL(baseURL)
         }
         self.baseURL = url
-        self.session = session
+        self.httpClient = httpClient
         self.additionalHeaders = additionalHeaders
     }
 
-    private func request(path: String) -> URLRequest {
-        var request = URLRequest(url: baseURL.appending(path: path))
+    // MARK: - Request builders
+
+    private func makeRequest(url: URL, method: HTTPMethod = .GET) -> HTTPClientRequest {
+        var request = HTTPClientRequest(url: url.absoluteString)
+        request.method = method
         for (key, value) in additionalHeaders {
-            request.setValue(value, forHTTPHeaderField: key)
+            request.headers.add(name: key, value: value)
         }
         return request
     }
 
-    private func listingRequest(prefix: String) throws -> URLRequest {
+    private func listingRequest(prefix: String) throws -> HTTPClientRequest {
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw StorageError.invalidURL(baseURL.absoluteString)
@@ -45,11 +52,7 @@ public final class S3CompatibleStorage: Storage {
         guard let listingURL = components.url else {
             throw StorageError.invalidURL(baseURL.absoluteString)
         }
-        var request = URLRequest(url: listingURL)
-        for (key, value) in additionalHeaders {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-        return request
+        return makeRequest(url: listingURL)
     }
 
     private func parseListingResponse(data: Data) throws -> (keys: [String], prefixes: [String]) {
@@ -64,45 +67,41 @@ public final class S3CompatibleStorage: Storage {
         return (delegate.keys, delegate.prefixes)
     }
 
+    // MARK: - Storage protocol
+
     public func read(path: String) async throws -> Data {
-        let request = request(path: path)
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw StorageError.httpError(statusCode: -1, path: path)
-        }
-        switch httpResponse.statusCode {
+        let request = makeRequest(url: baseURL.appending(path: path))
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        switch response.status.code {
         case 200...299:
-            return data
+            let buffer = try await response.body.collect(upTo: 512 * 1024 * 1024)
+            return Data(buffer.readableBytesView)
         case 404:
             throw StorageError.noSuchFile(path)
         default:
-            throw StorageError.httpError(statusCode: httpResponse.statusCode, path: path)
+            throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
         }
     }
 
     public func write(path: String, data: Data) async throws {
-        var request = request(path: path)
-        request.httpMethod = "PUT"
-        request.httpBody = data
-        let (_, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw StorageError.httpError(statusCode: -1, path: path)
-        }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw StorageError.httpError(statusCode: httpResponse.statusCode, path: path)
+        var request = makeRequest(url: baseURL.appending(path: path), method: .PUT)
+        request.body = .bytes(data)
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        _ = try? await response.body.collect(upTo: 1024 * 1024)
+        guard (200...299).contains(Int(response.status.code)) else {
+            throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
         }
     }
 
     /// List all objects (files and sub-prefixes) under a prefix.
     public func list(prefix: String) async throws -> [String] {
         let request = try listingRequest(prefix: prefix)
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw StorageError.httpError(statusCode: -1, path: prefix)
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        guard (200...299).contains(Int(response.status.code)) else {
+            throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
         }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw StorageError.httpError(statusCode: httpResponse.statusCode, path: prefix)
-        }
+        let buffer = try await response.body.collect(upTo: 16 * 1024 * 1024)
+        let data = Data(buffer.readableBytesView)
         let (keys, prefixes) = try parseListingResponse(data: data)
         return keys + prefixes
     }
@@ -111,13 +110,12 @@ public final class S3CompatibleStorage: Storage {
     /// Returns names relative to the prefix, without trailing slashes.
     public func listDir(prefix: String) async throws -> [String] {
         let request = try listingRequest(prefix: prefix)
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw StorageError.httpError(statusCode: -1, path: prefix)
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        guard (200...299).contains(Int(response.status.code)) else {
+            throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
         }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw StorageError.httpError(statusCode: httpResponse.statusCode, path: prefix)
-        }
+        let buffer = try await response.body.collect(upTo: 16 * 1024 * 1024)
+        let data = Data(buffer.readableBytesView)
         let (_, prefixes) = try parseListingResponse(data: data)
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
         return prefixes.map {
@@ -130,29 +128,23 @@ public final class S3CompatibleStorage: Storage {
     }
 
     public func exists(path: String) async throws -> Bool {
-        var request = request(path: path)
-        request.httpMethod = "HEAD"
-        let (_, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw StorageError.httpError(statusCode: -1, path: path)
-        }
-        switch httpResponse.statusCode {
+        let request = makeRequest(url: baseURL.appending(path: path), method: .HEAD)
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        _ = try? await response.body.collect(upTo: 1024)
+        switch response.status.code {
         case 200: return true
-        case 404, 400: return false
+        case 400, 404: return false
         default:
-            throw StorageError.httpError(statusCode: httpResponse.statusCode, path: path)
+            throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
         }
     }
 
     public func delete(path: String) async throws {
-        var request = request(path: path)
-        request.httpMethod = "DELETE"
-        let (_, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw StorageError.httpError(statusCode: -1, path: path)
-        }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw StorageError.httpError(statusCode: httpResponse.statusCode, path: path)
+        let request = makeRequest(url: baseURL.appending(path: path), method: .DELETE)
+        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        _ = try? await response.body.collect(upTo: 1024 * 1024)
+        guard (200...299).contains(Int(response.status.code)) else {
+            throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
         }
     }
 }
