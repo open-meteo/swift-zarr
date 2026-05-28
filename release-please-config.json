@@ -3,8 +3,7 @@
   "release-type": "simple",
   "packages": {
     ".": {
-      "release-type": "simple",
-      "package-name": "SwiftZarr"
+      "release-type": "simple"
     }
   }
 }
