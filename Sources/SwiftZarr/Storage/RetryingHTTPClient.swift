@@ -7,19 +7,22 @@ public struct RetryConfiguration: Sendable {
     let baseDelay: Duration
     let maxDelay: Duration
     let jitter: Double
+    let timeout: TimeAmount
 
     public static let `default` = RetryConfiguration(
         maxAttempts: 3,
         baseDelay: .milliseconds(200),
         maxDelay: .seconds(10),
-        jitter: 0.2
+        jitter: 0.2,
+        timeout: .seconds(60)
     )
 
-    public init(maxAttempts: Int, baseDelay: Duration, maxDelay: Duration, jitter: Double) {
+    public init(maxAttempts: Int, baseDelay: Duration, maxDelay: Duration, jitter: Double, timeout: TimeAmount) {
         self.maxAttempts = maxAttempts
         self.baseDelay = baseDelay
         self.maxDelay = maxDelay
         self.jitter = jitter
+        self.timeout = timeout
     }
 }
 
@@ -34,7 +37,7 @@ public struct RetryingHTTPClient: Sendable {
 
     public func execute(_ request: HTTPClientRequest, path: String) async throws -> HTTPClientResponse {
         try await retry(path: path) {
-            let response = try await httpClient.execute(request, timeout: .seconds(60))
+            let response = try await httpClient.execute(request, timeout: config.timeout)
             return response
         }
     }
