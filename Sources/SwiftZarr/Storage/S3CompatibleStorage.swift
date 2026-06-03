@@ -151,7 +151,7 @@ public final class S3CompatibleStorage: Storage {
 
 // MARK: - S3 ListBucket XML parser
 
-public final class S3ListParserDelegate: NSObject, XMLParserDelegate {
+internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     private enum State {
         case idle
         case inContents
@@ -166,7 +166,7 @@ public final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     var keys: [String] = []
     var prefixes: [String] = []
 
-    public func parser(
+    func parser(
         _ parser: XMLParser,
         didStartElement elementName: String,
         namespaceURI: String?,
@@ -188,12 +188,12 @@ public final class S3ListParserDelegate: NSObject, XMLParserDelegate {
         }
     }
 
-    public func parser(_ parser: XMLParser, foundCharacters string: String) {
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
         guard state != .idle, currentElement == "Key" || currentElement == "Prefix" else { return }
         currentValue += string
     }
 
-    public func parser(
+    func parser(
         _ parser: XMLParser,
         didEndElement elementName: String,
         namespaceURI: String?,
