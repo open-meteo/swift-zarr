@@ -4,7 +4,10 @@ public enum StorageError: Error, Sendable {
     case invalidURL(String)
     case noSuchFile(String)
     case httpError(statusCode: Int, path: String)
+    case connectionFailed(path: String, underlying: any Error & Sendable)
+    case timeout(path: String)
     case listFailed(String)
+    case readFailed(path: String, underlying: any Error & Sendable)
     case writeFailed(path: String, underlying: any Error & Sendable)
     case deleteFailed(path: String, underlying: any Error & Sendable)
 }

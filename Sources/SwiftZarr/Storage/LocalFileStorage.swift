@@ -14,6 +14,29 @@ public final class LocalFileStorage: Storage {
         self.baseURL = URL(filePath: basePath).standardized
     }
 
+    private func mapCocoaError(_ error: any Error, path: String) -> StorageError {
+        let nsError = error as NSError
+        guard nsError.domain == NSCocoaErrorDomain else {
+            return StorageError.connectionFailed(path: path, underlying: error)
+        }
+        switch nsError.code {
+        case NSFileReadNoSuchFileError, NSFileNoSuchFileError:
+            return StorageError.noSuchFile(path)
+        case NSFileReadNoPermissionError:
+            return StorageError.readFailed(path: path, underlying: error)
+        case NSFileWriteNoPermissionError:
+            return StorageError.writeFailed(path: path, underlying: error)
+        case NSFileWriteOutOfSpaceError:
+            return StorageError.writeFailed(path: path, underlying: error)
+        case NSFileWriteVolumeReadOnlyError:
+            return StorageError.writeFailed(path: path, underlying: error)
+        case NSFileLockingError:
+            return StorageError.readFailed(path: path, underlying: error)
+        default:
+            return StorageError.connectionFailed(path: path, underlying: error)
+        }
+    }
+
     public func read(path: String) async throws -> Data {
         let url = baseURL.appendingPathComponent(path)
         return try await withCheckedThrowingContinuation { continuation in
@@ -22,12 +45,7 @@ public final class LocalFileStorage: Storage {
                     let data = try Data(contentsOf: url)
                     continuation.resume(returning: data)
                 } catch {
-                    let nsError = error as NSError
-                    if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileReadNoSuchFileError {
-                        continuation.resume(throwing: StorageError.noSuchFile(path))
-                    } else {
-                        continuation.resume(throwing: error)
-                    }
+                    continuation.resume(throwing: self.mapCocoaError(error, path: path))
                 }
             }
         }
@@ -39,11 +57,7 @@ public final class LocalFileStorage: Storage {
             try FileManager.createIntermediateDirectories(for: url)
             try data.write(to: url)
         } catch {
-            let nsError = error as NSError
-            if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileNoSuchFileError {
-                throw StorageError.noSuchFile(path)
-            }
-            throw StorageError.writeFailed(path: path, underlying: error)
+            throw mapCocoaError(error, path: path)
         }
     }
 
@@ -81,7 +95,6 @@ public final class LocalFileStorage: Storage {
             guard values?.isDirectory == true else {
                 return nil
             }
-            // enumerator skipsSubdirectoryDescendants ensures we only enumerate one step
             return fileURL.lastPathComponent
         }
     }
@@ -96,13 +109,7 @@ public final class LocalFileStorage: Storage {
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
-            let nsError = error as NSError
-            if nsError.domain == NSCocoaErrorDomain,
-                nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError
-            {
-                throw StorageError.noSuchFile(path)
-            }
-            throw StorageError.deleteFailed(path: path, underlying: error)
+            throw mapCocoaError(error, path: path)
         }
     }
 }
