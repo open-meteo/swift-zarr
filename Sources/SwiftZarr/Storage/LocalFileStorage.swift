@@ -109,7 +109,13 @@ public final class LocalFileStorage: Storage {
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
-            throw mapCocoaError(error, path: path)
+            let nsError = error as NSError
+            if nsError.domain == NSCocoaErrorDomain,
+                nsError.code == NSFileNoSuchFileError || nsError.code == NSFileReadNoSuchFileError
+            {
+                throw StorageError.noSuchFile(path)
+            }
+            throw StorageError.deleteFailed(path: path, underlying: nsError)
         }
     }
 }
