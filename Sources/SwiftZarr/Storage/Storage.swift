@@ -1,15 +1,15 @@
 import Foundation
 
-public enum StorageError: Error, Sendable {
+public enum StorageError: Error {
     case invalidURL(String)
     case noSuchFile(String)
     case httpError(statusCode: Int, path: String, reason: String? = nil)
-    case connectionFailed(path: String, underlying: any Error & Sendable)
+    case connectionFailed(path: String, underlying: any Error)
     case timeout(path: String)
     case listFailed(String)
-    case readFailed(path: String, underlying: any Error & Sendable)
-    case writeFailed(path: String, underlying: any Error & Sendable)
-    case deleteFailed(path: String, underlying: any Error & Sendable)
+    case readFailed(path: String, underlying: any Error)
+    case writeFailed(path: String, underlying: any Error)
+    case deleteFailed(path: String, underlying: any Error)
 }
 
 public protocol Storage: Sendable {
