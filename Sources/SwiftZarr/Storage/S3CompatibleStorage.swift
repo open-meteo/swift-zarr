@@ -9,23 +9,23 @@ import FoundationXML
 
 public final class S3CompatibleStorage: Storage {
     private let baseURL: URL
-    private let httpClient: HTTPClient
+    private let retryingClient: RetryingHTTPClient
     private let additionalHeaders: [String: String]
 
     /// - Parameters:
     ///   - baseURL: Base URL of the S3-compatible endpoint, e.g. `"https://s3.amazonaws.com/my-bucket"`.
-    ///   - httpClient: The `AsyncHTTPClient.HTTPClient` instance to use. Defaults to `.shared`.
+    ///   - retryingClient: A `RetryingHTTPClient` instance wrapping an `AsyncHTTPClient.HTTPClient`.
     ///   - additionalHeaders: Extra HTTP headers added to every request (e.g. auth tokens).
     public init(
         baseURL: String,
-        httpClient: HTTPClient = .shared,
+        retryingClient: RetryingHTTPClient = RetryingHTTPClient(),
         additionalHeaders: [String: String] = [:]
     ) throws {
         guard let url = URL(string: baseURL) else {
             throw StorageError.invalidURL(baseURL)
         }
         self.baseURL = url
-        self.httpClient = httpClient
+        self.retryingClient = retryingClient
         self.additionalHeaders = additionalHeaders
     }
 
@@ -71,7 +71,7 @@ public final class S3CompatibleStorage: Storage {
 
     public func read(path: String) async throws -> Data {
         let request = makeRequest(url: baseURL.appending(path: path))
-        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        let response = try await retryingClient.execute(request, path: path)
         switch response.status.code {
         case 200...299:
             let buffer = try await response.body.collect(upTo: 512 * 1024 * 1024)
@@ -86,7 +86,7 @@ public final class S3CompatibleStorage: Storage {
     public func write(path: String, data: Data) async throws {
         var request = makeRequest(url: baseURL.appending(path: path), method: .PUT)
         request.body = .bytes(data)
-        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        let response = try await retryingClient.execute(request, path: path)
         _ = try? await response.body.collect(upTo: 1024 * 1024)
         guard (200...299).contains(Int(response.status.code)) else {
             throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
@@ -96,7 +96,7 @@ public final class S3CompatibleStorage: Storage {
     /// List all objects (files and sub-prefixes) under a prefix.
     public func list(prefix: String) async throws -> [String] {
         let request = try listingRequest(prefix: prefix)
-        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        let response = try await retryingClient.execute(request, path: prefix)
         guard (200...299).contains(Int(response.status.code)) else {
             throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
         }
@@ -110,7 +110,7 @@ public final class S3CompatibleStorage: Storage {
     /// Returns names relative to the prefix, without trailing slashes.
     public func listDir(prefix: String) async throws -> [String] {
         let request = try listingRequest(prefix: prefix)
-        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        let response = try await retryingClient.execute(request, path: prefix)
         guard (200...299).contains(Int(response.status.code)) else {
             throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
         }
@@ -129,7 +129,7 @@ public final class S3CompatibleStorage: Storage {
 
     public func exists(path: String) async throws -> Bool {
         let request = makeRequest(url: baseURL.appending(path: path), method: .HEAD)
-        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        let response = try await retryingClient.execute(request, path: path)
         _ = try? await response.body.collect(upTo: 1024)
         switch response.status.code {
         case 200: return true
@@ -141,7 +141,7 @@ public final class S3CompatibleStorage: Storage {
 
     public func delete(path: String) async throws {
         let request = makeRequest(url: baseURL.appending(path: path), method: .DELETE)
-        let response = try await httpClient.execute(request, timeout: .seconds(60))
+        let response = try await retryingClient.execute(request, path: path)
         _ = try? await response.body.collect(upTo: 1024 * 1024)
         guard (200...299).contains(Int(response.status.code)) else {
             throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
@@ -161,6 +161,8 @@ internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     private var state: State = .idle
     private var currentElement = ""
     private var currentValue = ""
+    private var currentKey = ""
+    private var currentPrefix = ""
     var keys: [String] = []
     var prefixes: [String] = []
 
@@ -199,12 +201,20 @@ internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     ) {
         let value = currentValue.trimmingCharacters(in: .whitespacesAndNewlines)
         switch elementName {
+        case "Key":
+            currentKey = value
+            currentValue = ""
+        case "Prefix":
+            currentPrefix = value
+            currentValue = ""
         case "Contents":
-            if !value.isEmpty { keys.append(value) }
+            if !currentKey.isEmpty { keys.append(currentKey) }
+            currentKey = ""
             state = .idle
             currentElement = ""
         case "CommonPrefixes":
-            if !value.isEmpty { prefixes.append(value) }
+            if !currentPrefix.isEmpty { prefixes.append(currentPrefix) }
+            currentPrefix = ""
             state = .idle
             currentElement = ""
         default:
