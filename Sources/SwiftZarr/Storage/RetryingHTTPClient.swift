@@ -38,6 +38,11 @@ public struct RetryingHTTPClient: Sendable {
     public func execute(_ request: HTTPClientRequest, path: String) async throws -> HTTPClientResponse {
         try await retry(path: path) {
             let response = try await httpClient.execute(request, timeout: config.timeout)
+            if response.status.code >= 500 {
+                let buffer = try? await response.body.collect(upTo: 1024 * 1024)
+                let responseString = buffer?.getString(at: 0, length: buffer?.readableBytes ?? 0)
+                throw StorageError.httpError(statusCode: Int(response.status.code), path: path, reason: responseString)
+            }
             return response
         }
     }
@@ -68,7 +73,7 @@ public struct RetryingHTTPClient: Sendable {
             switch se {
             case .connectionFailed, .timeout:
                 return true
-            case .httpError(let statusCode, _):
+            case .httpError(let statusCode, _, _):
                 return statusCode >= 500
             case .invalidURL, .noSuchFile, .listFailed, .readFailed, .writeFailed, .deleteFailed:
                 return false
