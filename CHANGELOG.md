@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/open-meteo/swift-zarr/compare/v0.1.0...v0.1.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* proper retry logic for s3 backend ([#3](https://github.com/open-meteo/swift-zarr/issues/3)) ([5f87323](https://github.com/open-meteo/swift-zarr/commit/5f87323c120f6f365cbac04a3827fef72451bb70))
+
 ## 0.1.0 (2026-05-28)
 
 
