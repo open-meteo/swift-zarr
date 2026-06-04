@@ -30,7 +30,7 @@ public struct RetryConfiguration: Sendable {
 public struct RetryingHTTPClient: Sendable {
     private let httpClient: HTTPClient
     private let config: RetryConfiguration
-    private let logger = Logger(label: "SwiftZarr.RetryingHTTPClient")
+    private static let logger = Logger(label: "SwiftZarr.RetryingHTTPClient")
 
     public init(httpClient: HTTPClient = .shared, config: RetryConfiguration = .default) {
         self.httpClient = httpClient
@@ -76,7 +76,7 @@ public struct RetryingHTTPClient: Sendable {
         } catch {
             if !isRetryable(error) || attempt >= config.maxAttempts {
                 if attempt > 1 {
-                    logger.warning(
+                    RetryingHTTPClient.logger.warning(
                         "Request failed after \(attempt) attempts, giving up",
                         metadata: ["path": "\(path)", "error": "\(error)"]
                     )
@@ -84,7 +84,7 @@ public struct RetryingHTTPClient: Sendable {
                 throw mapHTTPError(error, path: path)
             }
             let delay = backoffDuration(attempt: attempt)
-            logger.info(
+            RetryingHTTPClient.logger.info(
                 "Request failed, retrying (attempt \(attempt)/\(config.maxAttempts))",
                 metadata: ["path": "\(path)", "error": "\(error)", "backoff": "\(delay)"]
             )
