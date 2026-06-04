@@ -17,6 +17,7 @@ public final class S3CompatibleStorage: Storage {
     ///   - baseURL: Base URL of the S3-compatible endpoint, e.g. `"https://s3.amazonaws.com/my-bucket"`.
     ///   - retryingClient: A `RetryingHTTPClient` instance wrapping an `AsyncHTTPClient.HTTPClient`.
     ///   - additionalHeaders: Extra HTTP headers added to every request (e.g. auth tokens).
+    ///   - maxBodySize: Maximum number of bytes to collect from a response body. Defaults to 512 MB.
     public init(
         baseURL: String,
         retryingClient: RetryingHTTPClient = RetryingHTTPClient(),
@@ -87,7 +88,7 @@ public final class S3CompatibleStorage: Storage {
 
     public func write(path: String, data: Data) async throws {
         var request = makeRequest(url: baseURL.appending(path: path), method: .PUT)
-        request.body = .bytes(data)
+        request.body = .bytes(ByteBuffer(bytes: data))
         let response = try await retryingClient.execute(request, path: path)
         _ = try? await response.body.collect(upTo: 1024 * 1024)
         guard (200...299).contains(Int(response.status.code)) else {
