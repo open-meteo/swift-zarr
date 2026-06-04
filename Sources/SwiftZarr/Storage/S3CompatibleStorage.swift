@@ -11,15 +11,18 @@ public final class S3CompatibleStorage: Storage {
     private let baseURL: URL
     private let retryingClient: RetryingHTTPClient
     private let additionalHeaders: [String: String]
+    private let maxBodySize: Int
 
     /// - Parameters:
     ///   - baseURL: Base URL of the S3-compatible endpoint, e.g. `"https://s3.amazonaws.com/my-bucket"`.
     ///   - retryingClient: A `RetryingHTTPClient` instance wrapping an `AsyncHTTPClient.HTTPClient`.
     ///   - additionalHeaders: Extra HTTP headers added to every request (e.g. auth tokens).
+    ///   - maxBodySize: Maximum number of bytes to collect from a response body. Defaults to 512 MB.
     public init(
         baseURL: String,
         retryingClient: RetryingHTTPClient = RetryingHTTPClient(),
-        additionalHeaders: [String: String] = [:]
+        additionalHeaders: [String: String] = [:],
+        maxBodySize: Int = 512 * 1024 * 1024
     ) throws {
         guard let url = URL(string: baseURL) else {
             throw StorageError.invalidURL(baseURL)
@@ -27,6 +30,7 @@ public final class S3CompatibleStorage: Storage {
         self.baseURL = url
         self.retryingClient = retryingClient
         self.additionalHeaders = additionalHeaders
+        self.maxBodySize = maxBodySize
     }
 
     // MARK: - Request builders
@@ -71,10 +75,9 @@ public final class S3CompatibleStorage: Storage {
 
     public func read(path: String) async throws -> Data {
         let request = makeRequest(url: baseURL.appending(path: path))
-        let response = try await retryingClient.execute(request, path: path)
+        let (response, buffer) = try await retryingClient.executeAndCollect(request, path: path, maxBytes: maxBodySize)
         switch response.status.code {
         case 200...299:
-            let buffer = try await response.body.collect(upTo: 512 * 1024 * 1024)
             return Data(buffer.readableBytesView)
         case 404:
             throw StorageError.noSuchFile(path)
@@ -85,7 +88,7 @@ public final class S3CompatibleStorage: Storage {
 
     public func write(path: String, data: Data) async throws {
         var request = makeRequest(url: baseURL.appending(path: path), method: .PUT)
-        request.body = .bytes(data)
+        request.body = .bytes(ByteBuffer(bytes: data))
         let response = try await retryingClient.execute(request, path: path)
         _ = try? await response.body.collect(upTo: 1024 * 1024)
         guard (200...299).contains(Int(response.status.code)) else {
@@ -96,11 +99,14 @@ public final class S3CompatibleStorage: Storage {
     /// List all objects (files and sub-prefixes) under a prefix.
     public func list(prefix: String) async throws -> [String] {
         let request = try listingRequest(prefix: prefix)
-        let response = try await retryingClient.execute(request, path: prefix)
+        let (response, buffer) = try await retryingClient.executeAndCollect(
+            request,
+            path: prefix,
+            maxBytes: maxBodySize
+        )
         guard (200...299).contains(Int(response.status.code)) else {
             throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
         }
-        let buffer = try await response.body.collect(upTo: 16 * 1024 * 1024)
         let data = Data(buffer.readableBytesView)
         let (keys, prefixes) = try parseListingResponse(data: data)
         return keys + prefixes
@@ -110,11 +116,14 @@ public final class S3CompatibleStorage: Storage {
     /// Returns names relative to the prefix, without trailing slashes.
     public func listDir(prefix: String) async throws -> [String] {
         let request = try listingRequest(prefix: prefix)
-        let response = try await retryingClient.execute(request, path: prefix)
+        let (response, buffer) = try await retryingClient.executeAndCollect(
+            request,
+            path: prefix,
+            maxBytes: maxBodySize
+        )
         guard (200...299).contains(Int(response.status.code)) else {
             throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
         }
-        let buffer = try await response.body.collect(upTo: 16 * 1024 * 1024)
         let data = Data(buffer.readableBytesView)
         let (_, prefixes) = try parseListingResponse(data: data)
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
