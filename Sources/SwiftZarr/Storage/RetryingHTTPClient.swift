@@ -47,6 +47,25 @@ public struct RetryingHTTPClient: Sendable {
         }
     }
 
+    /// Executes a request and collects the full response body within the retry boundary.
+    /// This ensures that connection drops during body transfer are retried from scratch,
+    /// not just connection drops during the initial request handshake.
+    public func executeAndCollect(
+        _ request: HTTPClientRequest,
+        path: String,
+        maxBytes: Int
+    ) async throws -> (response: HTTPClientResponse, buffer: ByteBuffer) {
+        try await retry(path: path) {
+            let response = try await httpClient.execute(request, timeout: config.timeout)
+            let buffer = try await response.body.collect(upTo: maxBytes)
+            if response.status.code >= 500 {
+                let responseString = buffer.getString(at: 0, length: buffer.readableBytes)
+                throw StorageError.httpError(statusCode: Int(response.status.code), path: path, reason: responseString)
+            }
+            return (response, buffer)
+        }
+    }
+
     // MARK: - Retry helpers
 
     private func retry<T>(path: String, body: () async throws -> T) async throws -> T {
