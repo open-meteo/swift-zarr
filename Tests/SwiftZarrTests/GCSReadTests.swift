@@ -182,3 +182,93 @@ func testS3ListParserEmptyResult() throws {
     #expect(delegate.keys == [])
     #expect(delegate.prefixes == [])
 }
+
+@Test
+func testS3ListParserTopLevelPrefixNotCaptured() throws {
+    // The top-level <Prefix> is an echo of the query prefix, not a result.
+    // It must not appear in delegate.prefixes.
+    let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <Prefix>some/query/prefix/</Prefix>
+          <IsTruncated>false</IsTruncated>
+          <CommonPrefixes>
+            <Prefix>some/query/prefix/subdir/</Prefix>
+          </CommonPrefixes>
+        </ListBucketResult>
+        """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    #expect(parser.parse())
+    #expect(delegate.prefixes == ["some/query/prefix/subdir/"])
+    #expect(delegate.isTruncated == false)
+}
+
+@Test
+func testS3ListParserTruncatedWithNextMarker() throws {
+    let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <IsTruncated>true</IsTruncated>
+          <NextMarker>prefix/file1000</NextMarker>
+          <Contents>
+            <Key>prefix/file1</Key>
+          </Contents>
+          <Contents>
+            <Key>prefix/file1000</Key>
+          </Contents>
+        </ListBucketResult>
+        """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    #expect(parser.parse())
+    #expect(delegate.isTruncated == true)
+    #expect(delegate.nextMarker == "prefix/file1000")
+    #expect(delegate.keys == ["prefix/file1", "prefix/file1000"])
+}
+
+@Test
+func testS3ListParserTruncatedWithoutNextMarker() throws {
+    // Some providers omit NextMarker even when truncated.
+    // The caller should fall back to keys.last as the marker.
+    let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <IsTruncated>true</IsTruncated>
+          <Contents>
+            <Key>prefix/file1</Key>
+          </Contents>
+          <Contents>
+            <Key>prefix/file1000</Key>
+          </Contents>
+        </ListBucketResult>
+        """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    #expect(parser.parse())
+    #expect(delegate.isTruncated == true)
+    #expect(delegate.nextMarker == nil)
+    #expect(delegate.keys.last == "prefix/file1000")
+}
+
+@Test
+func testS3ListParserNotTruncated() throws {
+    let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <IsTruncated>false</IsTruncated>
+          <Contents>
+            <Key>prefix/file1</Key>
+          </Contents>
+        </ListBucketResult>
+        """.data(using: .utf8)!
+    let parser = XMLParser(data: xml)
+    let delegate = S3ListParserDelegate()
+    parser.delegate = delegate
+    #expect(parser.parse())
+    #expect(delegate.isTruncated == false)
+    #expect(delegate.nextMarker == nil)
+}
