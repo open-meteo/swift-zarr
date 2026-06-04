@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import Foundation
+import Logging
 import NIOCore
 
 public struct RetryConfiguration: Sendable {
@@ -29,6 +30,7 @@ public struct RetryConfiguration: Sendable {
 public struct RetryingHTTPClient: Sendable {
     private let httpClient: HTTPClient
     private let config: RetryConfiguration
+    private let logger = Logger(label: "SwiftZarr.RetryingHTTPClient")
 
     public init(httpClient: HTTPClient = .shared, config: RetryConfiguration = .default) {
         self.httpClient = httpClient
@@ -74,9 +76,20 @@ public struct RetryingHTTPClient: Sendable {
                 return try await body()
             } catch {
                 if !isRetryable(error) || attempt == config.maxAttempts {
+                    if attempt > 1 {
+                        logger.warning(
+                            "Request failed after \(attempt) attempts, giving up",
+                            metadata: ["path": "\(path)", "error": "\(error)"]
+                        )
+                    }
                     throw mapHTTPError(error, path: path)
                 }
-                try await Task.sleep(for: backoffDuration(attempt: attempt))
+                let delay = backoffDuration(attempt: attempt)
+                logger.warning(
+                    "Request failed, retrying (attempt \(attempt)/\(config.maxAttempts))",
+                    metadata: ["path": "\(path)", "error": "\(error)", "backoff": "\(delay)"]
+                )
+                try await Task.sleep(for: delay)
             }
         }
         throw StorageError.connectionFailed(path: path, underlying: NSError(domain: "", code: -1))
