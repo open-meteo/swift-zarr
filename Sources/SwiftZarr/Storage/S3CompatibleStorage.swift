@@ -44,22 +44,28 @@ public final class S3CompatibleStorage: Storage {
         return request
     }
 
-    private func listingRequest(prefix: String) throws -> HTTPClientRequest {
+    private func listingRequest(prefix: String, marker: String? = nil) throws -> HTTPClientRequest {
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw StorageError.invalidURL(baseURL.absoluteString)
         }
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "prefix", value: normalizedPrefix),
             URLQueryItem(name: "delimiter", value: "/"),
         ]
+        if let marker {
+            queryItems.append(URLQueryItem(name: "marker", value: marker))
+        }
+        components.queryItems = queryItems
         guard let listingURL = components.url else {
             throw StorageError.invalidURL(baseURL.absoluteString)
         }
         return makeRequest(url: listingURL)
     }
 
-    private func parseListingResponse(data: Data) throws -> (keys: [String], prefixes: [String]) {
+    private func parseListingResponse(
+        data: Data
+    ) throws -> (keys: [String], prefixes: [String], nextMarker: String?, isTruncated: Bool) {
         let parser = XMLParser(data: data)
         let delegate = S3ListParserDelegate()
         parser.delegate = delegate
@@ -68,7 +74,7 @@ public final class S3CompatibleStorage: Storage {
                 parser.parserError.map { "\($0)" } ?? "unknown XML parse error"
             )
         }
-        return (delegate.keys, delegate.prefixes)
+        return (delegate.keys, delegate.prefixes, delegate.nextMarker, delegate.isTruncated)
     }
 
     // MARK: - Storage protocol
@@ -98,36 +104,50 @@ public final class S3CompatibleStorage: Storage {
 
     /// List all objects (files and sub-prefixes) under a prefix.
     public func list(prefix: String) async throws -> [String] {
-        let request = try listingRequest(prefix: prefix)
-        let (response, buffer) = try await retryingClient.executeAndCollect(
-            request,
-            path: prefix,
-            maxBytes: maxBodySize
-        )
-        guard (200...299).contains(Int(response.status.code)) else {
-            throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
-        }
-        let data = Data(buffer.readableBytesView)
-        let (keys, prefixes) = try parseListingResponse(data: data)
-        return keys + prefixes
+        var allKeys: [String] = []
+        var allPrefixes: [String] = []
+        var marker: String? = nil
+        repeat {
+            let request = try listingRequest(prefix: prefix, marker: marker)
+            let (response, buffer) = try await retryingClient.executeAndCollect(
+                request,
+                path: prefix,
+                maxBytes: maxBodySize
+            )
+            guard (200...299).contains(Int(response.status.code)) else {
+                throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
+            }
+            let data = Data(buffer.readableBytesView)
+            let (keys, prefixes, nextMarker, isTruncated) = try parseListingResponse(data: data)
+            allKeys.append(contentsOf: keys)
+            allPrefixes.append(contentsOf: prefixes)
+            marker = isTruncated ? nextMarker : nil
+        } while marker != nil
+        return allKeys + allPrefixes
     }
 
     /// List immediate sub-prefixes (directories) under a prefix.
     /// Returns names relative to the prefix, without trailing slashes.
     public func listDir(prefix: String) async throws -> [String] {
-        let request = try listingRequest(prefix: prefix)
-        let (response, buffer) = try await retryingClient.executeAndCollect(
-            request,
-            path: prefix,
-            maxBytes: maxBodySize
-        )
-        guard (200...299).contains(Int(response.status.code)) else {
-            throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
-        }
-        let data = Data(buffer.readableBytesView)
-        let (_, prefixes) = try parseListingResponse(data: data)
+        var allPrefixes: [String] = []
+        var marker: String? = nil
+        repeat {
+            let request = try listingRequest(prefix: prefix, marker: marker)
+            let (response, buffer) = try await retryingClient.executeAndCollect(
+                request,
+                path: prefix,
+                maxBytes: maxBodySize
+            )
+            guard (200...299).contains(Int(response.status.code)) else {
+                throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
+            }
+            let data = Data(buffer.readableBytesView)
+            let (_, prefixes, nextMarker, isTruncated) = try parseListingResponse(data: data)
+            allPrefixes.append(contentsOf: prefixes)
+            marker = isTruncated ? nextMarker : nil
+        } while marker != nil
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
-        return prefixes.map {
+        return allPrefixes.map {
             var name = $0
             if name.hasPrefix(normalizedPrefix) {
                 name = String(name.dropFirst(normalizedPrefix.count))
@@ -174,6 +194,8 @@ internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     private var currentPrefix = ""
     var keys: [String] = []
     var prefixes: [String] = []
+    var nextMarker: String? = nil
+    var isTruncated = false
 
     func parser(
         _ parser: XMLParser,
@@ -190,7 +212,7 @@ internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
         case "CommonPrefixes":
             state = .inCommonPrefixes
             currentValue = ""
-        case "Key", "Prefix":
+        case "Key", "Prefix", "IsTruncated", "NextMarker":
             currentValue = ""
         default:
             break
@@ -198,8 +220,16 @@ internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        guard state != .idle, currentElement == "Key" || currentElement == "Prefix" else { return }
-        currentValue += string
+        switch state {
+        case .inContents where currentElement == "Key":
+            currentValue += string
+        case .inCommonPrefixes where currentElement == "Prefix":
+            currentValue += string
+        case .idle where currentElement == "IsTruncated" || currentElement == "NextMarker":
+            currentValue += string
+        default:
+            break
+        }
     }
 
     func parser(
@@ -215,6 +245,12 @@ internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
             currentValue = ""
         case "Prefix":
             currentPrefix = value
+            currentValue = ""
+        case "IsTruncated":
+            isTruncated = value.lowercased() == "true"
+            currentValue = ""
+        case "NextMarker":
+            nextMarker = value.isEmpty ? nil : value
             currentValue = ""
         case "Contents":
             if !currentKey.isEmpty { keys.append(currentKey) }
