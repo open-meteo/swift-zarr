@@ -13,6 +13,7 @@ A native Swift library for reading and writing [Zarr](https://zarr.dev) V2 and V
 Add SwiftZarr as a dependency in your `Package.swift`:
 
 <!-- x-release-please-start-version -->
+
 ```swift
 dependencies: [
     .package(url: "https://github.com/open-meteo/swift-zarr", from: "0.1.1"),
@@ -26,6 +27,7 @@ targets: [
     ),
 ]
 ```
+
 <!-- x-release-please-end -->
 
 ## Features
