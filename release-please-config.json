@@ -3,7 +3,8 @@
   "release-type": "simple",
   "packages": {
     ".": {
-      "release-type": "simple"
+      "release-type": "simple",
+      "extra-files": ["README.md"]
     }
   }
 }
