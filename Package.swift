@@ -13,6 +13,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/tsolomko/SWCompression", from: "4.8.0"),
         .package(url: "https://github.com/swift-server/async-http-client", from: "1.30.0"),
+        .package(url: "https://github.com/apple/swift-log", from: "1.0.0"),
     ],
     targets: [
         .target(
@@ -43,6 +44,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SWCompression", package: "SWCompression"),
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
+                .product(name: "Logging", package: "swift-log"),
                 "CBlosc",
             ]
         ),
