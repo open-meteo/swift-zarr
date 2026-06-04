@@ -70,29 +70,27 @@ public struct RetryingHTTPClient: Sendable {
 
     // MARK: - Retry helpers
 
-    private func retry<T>(path: String, body: () async throws -> T) async throws -> T {
-        for attempt in 1...config.maxAttempts {
-            do {
-                return try await body()
-            } catch {
-                if !isRetryable(error) || attempt == config.maxAttempts {
-                    if attempt > 1 {
-                        logger.warning(
-                            "Request failed after \(attempt) attempts, giving up",
-                            metadata: ["path": "\(path)", "error": "\(error)"]
-                        )
-                    }
-                    throw mapHTTPError(error, path: path)
+    private func retry<T>(path: String, attempt: Int = 1, body: () async throws -> T) async throws -> T {
+        do {
+            return try await body()
+        } catch {
+            if !isRetryable(error) || attempt >= config.maxAttempts {
+                if attempt > 1 {
+                    logger.warning(
+                        "Request failed after \(attempt) attempts, giving up",
+                        metadata: ["path": "\(path)", "error": "\(error)"]
+                    )
                 }
-                let delay = backoffDuration(attempt: attempt)
-                logger.warning(
-                    "Request failed, retrying (attempt \(attempt)/\(config.maxAttempts))",
-                    metadata: ["path": "\(path)", "error": "\(error)", "backoff": "\(delay)"]
-                )
-                try await Task.sleep(for: delay)
+                throw mapHTTPError(error, path: path)
             }
+            let delay = backoffDuration(attempt: attempt)
+            logger.info(
+                "Request failed, retrying (attempt \(attempt)/\(config.maxAttempts))",
+                metadata: ["path": "\(path)", "error": "\(error)", "backoff": "\(delay)"]
+            )
+            try await Task.sleep(for: delay)
+            return try await retry(path: path, attempt: attempt + 1, body: body)
         }
-        throw StorageError.connectionFailed(path: path, underlying: NSError(domain: "", code: -1))
     }
 
     private func isRetryable(_ error: any Error) -> Bool {
