@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/open-meteo/swift-zarr/compare/v0.1.1...v0.1.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* pagination in S3 listing ([#7](https://github.com/open-meteo/swift-zarr/issues/7)) ([7d2c3ed](https://github.com/open-meteo/swift-zarr/commit/7d2c3ed3e9b8209aaaeb002d8b7988d8f419281f))
+* S3CompatibleStorage retry during body collect  ([#5](https://github.com/open-meteo/swift-zarr/issues/5)) ([e1d01e8](https://github.com/open-meteo/swift-zarr/commit/e1d01e860ee09976f74a88b4254d21887e461c3b))
+
 ## [0.1.1](https://github.com/open-meteo/swift-zarr/compare/v0.1.0...v0.1.1) (2026-06-03)
 
 
