@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/open-meteo/swift-zarr/compare/v0.1.2...v0.1.3) (2026-06-04)
+
+
+### Bug Fixes
+
+* add logging on retries and convert retry to be recursive ([#9](https://github.com/open-meteo/swift-zarr/issues/9)) ([5fdae57](https://github.com/open-meteo/swift-zarr/commit/5fdae574a4e4393bc59274a19005ebb0eca8931c))
+
 ## [0.1.2](https://github.com/open-meteo/swift-zarr/compare/v0.1.1...v0.1.2) (2026-06-04)
 
 

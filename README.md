@@ -16,7 +16,7 @@ Add SwiftZarr as a dependency in your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/open-meteo/swift-zarr", from: "0.1.2"),
+    .package(url: "https://github.com/open-meteo/swift-zarr", from: "0.1.3"),
 ],
 targets: [
     .target(
