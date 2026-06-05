@@ -749,7 +749,7 @@ public struct ZarrArray: Sendable {
                 case 1: return dataType.data(from: UInt8(truncatingIfNeeded: v))
                 case 2: return dataType.data(from: UInt16(truncatingIfNeeded: v))
                 case 4: return dataType.data(from: UInt32(truncatingIfNeeded: v))
-                case 8: return dataType.data(from: UInt64(v))
+                case 8: return dataType.data(from: UInt64(truncatingIfNeeded: v))
                 default: return nil
                 }
             case .float:
