@@ -121,7 +121,7 @@ public final class S3CompatibleStorage: Storage {
             let (keys, prefixes, nextMarker, isTruncated) = try parseListingResponse(data: data)
             allKeys.append(contentsOf: keys)
             allPrefixes.append(contentsOf: prefixes)
-            marker = isTruncated ? nextMarker : nil
+            marker = isTruncated ? (nextMarker ?? keys.last ?? prefixes.last) : nil
         } while marker != nil
         return allKeys + allPrefixes
     }
@@ -142,9 +142,9 @@ public final class S3CompatibleStorage: Storage {
                 throw StorageError.httpError(statusCode: Int(response.status.code), path: prefix)
             }
             let data = Data(buffer.readableBytesView)
-            let (_, prefixes, nextMarker, isTruncated) = try parseListingResponse(data: data)
+            let (keys, prefixes, nextMarker, isTruncated) = try parseListingResponse(data: data)
             allPrefixes.append(contentsOf: prefixes)
-            marker = isTruncated ? nextMarker : nil
+            marker = isTruncated ? (nextMarker ?? keys.last ?? prefixes.last) : nil
         } while marker != nil
         let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
         return allPrefixes.map {
