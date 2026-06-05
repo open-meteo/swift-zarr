@@ -20,7 +20,7 @@ extension Float: ZarrElement {
         let count = data.count / MemoryLayout<Float>.size
         var result = [Float](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in
-            data.copyBytes(to: dest, from: data.startIndex..<data.endIndex)
+            data.copyBytes(to: dest)
         }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { Float(bitPattern: $0.bitPattern.byteSwapped) }
@@ -37,7 +37,7 @@ extension Double: ZarrElement {
         let count = data.count / MemoryLayout<Double>.size
         var result = [Double](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in
-            data.copyBytes(to: dest, from: data.startIndex..<data.endIndex)
+            data.copyBytes(to: dest)
         }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
             result = result.map { Double(bitPattern: $0.bitPattern.byteSwapped) }
