@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/open-meteo/swift-zarr/compare/v0.1.3...v0.1.4) (2026-06-08)
+
+
+### Bug Fixes
+
+* unhandled errors are most likely transient transport level errors and should be retried ([fe1b99a](https://github.com/open-meteo/swift-zarr/commit/fe1b99af312e7cab1bfc5d4e8311df3167280ce4))
+
 ## [0.1.3](https://github.com/open-meteo/swift-zarr/compare/v0.1.2...v0.1.3) (2026-06-04)
 
 
