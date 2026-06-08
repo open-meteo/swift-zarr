@@ -95,21 +95,16 @@ public struct RetryingHTTPClient: Sendable {
 
     private func isRetryable(_ error: any Error) -> Bool {
         switch error {
-        case is CancellationError:
-            return false
-        case is HTTPClientError:
-            return true
+        case is CancellationError: return false
+        case is HTTPClientError: return true
         case let se as StorageError:
             switch se {
-            case .connectionFailed, .timeout:
-                return true
-            case .httpError(let statusCode, _, _):
-                return statusCode >= 500
+            case .connectionFailed, .timeout: return true
+            case .httpError(let statusCode, _, _): return statusCode >= 500
             case .invalidURL, .noSuchFile, .listFailed, .readFailed, .writeFailed, .deleteFailed:
                 return false
             }
-        default:
-            return false
+        default: return true  // Any unexpected NIO/transport level error is likely transient
         }
     }
 
