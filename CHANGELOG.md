@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/open-meteo/swift-zarr/compare/v0.1.4...v0.1.5) (2026-06-08)
+
+
+### Bug Fixes
+
+* remove unused function ([d9c4a6c](https://github.com/open-meteo/swift-zarr/commit/d9c4a6c876ec19b1fd0335a16172a3201e3f4647))
+
 ## [0.1.4](https://github.com/open-meteo/swift-zarr/compare/v0.1.3...v0.1.4) (2026-06-08)
 
 
