@@ -459,15 +459,6 @@ public struct ZarrArray: Sendable {
         return try T.decode(output, endian: dataType.endian)
     }
 
-    /// Retrieve the raw encoded bytes of a chunk (before codec decompression).
-    /// Returns `nil` if the chunk file does not exist.
-    func retrieveEncodedChunk(_ indices: [Int]) async throws -> Data? {
-        try validateIndices(indices)
-        let key = path + "/" + chunkKey(indices)
-        guard try await storage.exists(path: key) else { return nil }
-        return try await storage.read(path: key)
-    }
-
     // MARK: - Internal
 
     /// Read and decompress a single chunk, returning decoded bytes in array byte order.
