@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5](https://github.com/open-meteo/swift-zarr/compare/v0.1.4...v0.1.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* remove unused function ([d9c4a6c](https://github.com/open-meteo/swift-zarr/commit/d9c4a6c876ec19b1fd0335a16172a3201e3f4647))
+* rewrite s3 list xml parsing to not depend on FoundationXML ([#15](https://github.com/open-meteo/swift-zarr/issues/15)) ([2a72a70](https://github.com/open-meteo/swift-zarr/commit/2a72a70a9aa7343e22ee67d00410ad7388fda0fc))
+
 ## [0.1.4](https://github.com/open-meteo/swift-zarr/compare/v0.1.3...v0.1.4) (2026-06-08)
 
 
