@@ -3,10 +3,6 @@ import Foundation
 import NIOCore
 import NIOHTTP1
 
-#if canImport(FoundationXML)
-import FoundationXML
-#endif
-
 public final class S3CompatibleStorage: Storage {
     private let baseURL: URL
     private let retryingClient: RetryingHTTPClient
@@ -66,15 +62,8 @@ public final class S3CompatibleStorage: Storage {
     private func parseListingResponse(
         data: Data
     ) throws -> (keys: [String], prefixes: [String], nextMarker: String?, isTruncated: Bool) {
-        let parser = XMLParser(data: data)
-        let delegate = S3ListParserDelegate()
-        parser.delegate = delegate
-        guard parser.parse() else {
-            throw StorageError.listFailed(
-                parser.parserError.map { "\($0)" } ?? "unknown XML parse error"
-            )
-        }
-        return (delegate.keys, delegate.prefixes, delegate.nextMarker, delegate.isTruncated)
+        let result = try S3ListV1Parser.parse(data)
+        return (result.keys, result.prefixes, result.nextMarker, result.isTruncated)
     }
 
     // MARK: - Storage protocol
@@ -180,90 +169,83 @@ public final class S3CompatibleStorage: Storage {
 
 // MARK: - S3 ListBucket XML parser
 
-internal final class S3ListParserDelegate: NSObject, XMLParserDelegate {
-    private enum State {
-        case idle
-        case inContents
-        case inCommonPrefixes
+internal struct S3ListV1Result {
+    var keys: [String]
+    var prefixes: [String]
+    var nextMarker: String?
+    var isTruncated: Bool
+}
+
+internal enum S3ListV1Parser {
+    static func parse(_ data: Data) throws -> S3ListV1Result {
+        guard let xml = String(data: data, encoding: .utf8) else {
+            throw StorageError.listFailed("S3 list response is not valid UTF-8")
+        }
+
+        let keys = xml.s3ListXMLSections("Contents").compactMap { section -> String? in
+            guard let value = section.s3ListXMLFirst("Key")?.s3ListXMLValue, !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+        let prefixes = xml.s3ListXMLSections("CommonPrefixes").compactMap { section -> String? in
+            guard let value = section.s3ListXMLFirst("Prefix")?.s3ListXMLValue, !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+        let isTruncated = xml.s3ListXMLFirst("IsTruncated")?.s3ListXMLValue.lowercased() == "true"
+        let nextMarkerValue = xml.s3ListXMLFirst("NextMarker")?.s3ListXMLValue
+
+        return S3ListV1Result(
+            keys: keys,
+            prefixes: prefixes,
+            nextMarker: nextMarkerValue?.isEmpty == false ? nextMarkerValue : nil,
+            isTruncated: isTruncated
+        )
     }
+}
 
-    private var state: State = .idle
-    private var currentElement = ""
-    private var currentValue = ""
-    private var currentKey = ""
-    private var currentPrefix = ""
-    var keys: [String] = []
-    var prefixes: [String] = []
-    var nextMarker: String? = nil
-    var isTruncated = false
-
-    func parser(
-        _ parser: XMLParser,
-        didStartElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?,
-        attributes attributeDict: [String: String] = [:]
-    ) {
-        currentElement = elementName
-        switch elementName {
-        case "Contents":
-            state = .inContents
-            currentValue = ""
-        case "CommonPrefixes":
-            state = .inCommonPrefixes
-            currentValue = ""
-        case "Key", "Prefix", "IsTruncated", "NextMarker":
-            currentValue = ""
-        default:
-            break
+extension StringProtocol {
+    fileprivate func s3ListXMLSections(_ tag: String) -> AnySequence<SubSequence> {
+        AnySequence { () -> AnyIterator<SubSequence> in
+            var position = startIndex
+            return AnyIterator {
+                guard let start = range(of: "<\(tag)>", range: position..<endIndex) else {
+                    return nil
+                }
+                guard let end = range(of: "</\(tag)>", range: start.upperBound..<endIndex) else {
+                    return nil
+                }
+                position = end.upperBound
+                return self[start.upperBound..<end.lowerBound]
+            }
         }
     }
 
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
-        switch state {
-        case .inContents where currentElement == "Key":
-            currentValue += string
-        case .inCommonPrefixes where currentElement == "Prefix":
-            currentValue += string
-        case .idle where currentElement == "IsTruncated" || currentElement == "NextMarker":
-            currentValue += string
-        default:
-            break
+    fileprivate func s3ListXMLFirst(_ tag: String) -> SubSequence? {
+        guard let start = range(of: "<\(tag)>", range: startIndex..<endIndex) else {
+            return nil
         }
+        guard let end = range(of: "</\(tag)>", range: start.upperBound..<endIndex) else {
+            return nil
+        }
+        return self[start.upperBound..<end.lowerBound]
     }
 
-    func parser(
-        _ parser: XMLParser,
-        didEndElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?
-    ) {
-        let value = currentValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch elementName {
-        case "Key":
-            currentKey = value
-            currentValue = ""
-        case "Prefix":
-            currentPrefix = value
-            currentValue = ""
-        case "IsTruncated":
-            isTruncated = value.lowercased() == "true"
-            currentValue = ""
-        case "NextMarker":
-            nextMarker = value.isEmpty ? nil : value
-            currentValue = ""
-        case "Contents":
-            if !currentKey.isEmpty { keys.append(currentKey) }
-            currentKey = ""
-            state = .idle
-            currentElement = ""
-        case "CommonPrefixes":
-            if !currentPrefix.isEmpty { prefixes.append(currentPrefix) }
-            currentPrefix = ""
-            state = .idle
-            currentElement = ""
-        default:
-            break
-        }
+    fileprivate var s3ListXMLValue: String {
+        String(self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .s3ListDecodingNamedXMLEntities()
+    }
+}
+
+extension String {
+    fileprivate func s3ListDecodingNamedXMLEntities() -> String {
+        replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&amp;", with: "&")
     }
 }

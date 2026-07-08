@@ -3,10 +3,6 @@ import Testing
 
 @testable import SwiftZarr
 
-#if canImport(FoundationXML)
-import FoundationXML
-#endif
-
 let gcsBaseURL = "https://storage.googleapis.com/gcp-public-data-arco-era5"
 let gcsStorePath = "ar/1959-2022-6h-64x32_equiangular_conservative.zarr"
 
@@ -114,9 +110,14 @@ func testGCSListChildren() async throws {
 
 // MARK: - S3 ListBucket XML parser tests
 
+private func parseS3List(_ xml: String) throws -> S3ListV1Result {
+    try S3ListV1Parser.parse(xml.data(using: .utf8)!)
+}
+
 @Test
 func testS3ListParserExtractsKeysOnly() throws {
-    let xml = """
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
           <Contents>
@@ -135,19 +136,16 @@ func testS3ListParserExtractsKeysOnly() throws {
             <Prefix>prefix/subdir/</Prefix>
           </CommonPrefixes>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    let parsed = parser.parse()
-    #expect(parsed)
-    #expect(delegate.keys == ["prefix/file1", "prefix/file2"])
-    #expect(delegate.prefixes == ["prefix/subdir/"])
+        """
+    )
+    #expect(result.keys == ["prefix/file1", "prefix/file2"])
+    #expect(result.prefixes == ["prefix/subdir/"])
 }
 
 @Test
 func testS3ListParserKeyWithWhitespace() throws {
-    let xml = """
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
           <Contents>
@@ -157,37 +155,31 @@ func testS3ListParserKeyWithWhitespace() throws {
             <Size>100</Size>
           </Contents>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    let parsed = parser.parse()
-    #expect(parsed)
-    #expect(delegate.keys == ["prefix/file"])
-    #expect(delegate.prefixes == [])
+        """
+    )
+    #expect(result.keys == ["prefix/file"])
+    #expect(result.prefixes == [])
 }
 
 @Test
 func testS3ListParserEmptyResult() throws {
-    let xml = """
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    let parsed = parser.parse()
-    #expect(parsed)
-    #expect(delegate.keys == [])
-    #expect(delegate.prefixes == [])
+        """
+    )
+    #expect(result.keys == [])
+    #expect(result.prefixes == [])
 }
 
 @Test
 func testS3ListParserTopLevelPrefixNotCaptured() throws {
     // The top-level <Prefix> is an echo of the query prefix, not a result.
-    // It must not appear in delegate.prefixes.
-    let xml = """
+    // It must not appear in result.prefixes.
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
           <Prefix>some/query/prefix/</Prefix>
@@ -196,18 +188,16 @@ func testS3ListParserTopLevelPrefixNotCaptured() throws {
             <Prefix>some/query/prefix/subdir/</Prefix>
           </CommonPrefixes>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    #expect(parser.parse())
-    #expect(delegate.prefixes == ["some/query/prefix/subdir/"])
-    #expect(delegate.isTruncated == false)
+        """
+    )
+    #expect(result.prefixes == ["some/query/prefix/subdir/"])
+    #expect(result.isTruncated == false)
 }
 
 @Test
 func testS3ListParserTruncatedWithNextMarker() throws {
-    let xml = """
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
           <IsTruncated>true</IsTruncated>
@@ -219,21 +209,17 @@ func testS3ListParserTruncatedWithNextMarker() throws {
             <Key>prefix/file1000</Key>
           </Contents>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    #expect(parser.parse())
-    #expect(delegate.isTruncated == true)
-    #expect(delegate.nextMarker == "prefix/file1000")
-    #expect(delegate.keys == ["prefix/file1", "prefix/file1000"])
+        """
+    )
+    #expect(result.isTruncated == true)
+    #expect(result.nextMarker == "prefix/file1000")
+    #expect(result.keys == ["prefix/file1", "prefix/file1000"])
 }
 
 @Test
 func testS3ListParserTruncatedWithoutNextMarker() throws {
-    // Some providers omit NextMarker even when truncated.
-    // The caller should fall back to keys.last as the marker.
-    let xml = """
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
           <IsTruncated>true</IsTruncated>
@@ -244,19 +230,17 @@ func testS3ListParserTruncatedWithoutNextMarker() throws {
             <Key>prefix/file1000</Key>
           </Contents>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    #expect(parser.parse())
-    #expect(delegate.isTruncated == true)
-    #expect(delegate.nextMarker == nil)
-    #expect(delegate.keys.last == "prefix/file1000")
+        """
+    )
+    #expect(result.isTruncated == true)
+    #expect(result.nextMarker == nil)
+    #expect(result.keys.last == "prefix/file1000")
 }
 
 @Test
 func testS3ListParserNotTruncated() throws {
-    let xml = """
+    let result = try parseS3List(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <ListBucketResult>
           <IsTruncated>false</IsTruncated>
@@ -264,11 +248,29 @@ func testS3ListParserNotTruncated() throws {
             <Key>prefix/file1</Key>
           </Contents>
         </ListBucketResult>
-        """.data(using: .utf8)!
-    let parser = XMLParser(data: xml)
-    let delegate = S3ListParserDelegate()
-    parser.delegate = delegate
-    #expect(parser.parse())
-    #expect(delegate.isTruncated == false)
-    #expect(delegate.nextMarker == nil)
+        """
+    )
+    #expect(result.isTruncated == false)
+    #expect(result.nextMarker == nil)
+}
+
+@Test
+func testS3ListParserDecodesNamedEntities() throws {
+    let result = try parseS3List(
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ListBucketResult>
+          <NextMarker>prefix/a&amp;b</NextMarker>
+          <Contents>
+            <Key>prefix/a&amp;b&lt;c&gt;&quot;d&apos;e</Key>
+          </Contents>
+          <CommonPrefixes>
+            <Prefix>prefix/a&amp;b/</Prefix>
+          </CommonPrefixes>
+        </ListBucketResult>
+        """
+    )
+    #expect(result.nextMarker == "prefix/a&b")
+    #expect(result.keys == ["prefix/a&b<c>\"d'e"])
+    #expect(result.prefixes == ["prefix/a&b/"])
 }
