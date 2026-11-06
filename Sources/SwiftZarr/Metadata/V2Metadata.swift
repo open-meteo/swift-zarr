@@ -15,7 +15,7 @@ public struct V2ArrayMetadata: Codable, Sendable {
     public let dtype: String
     public let compressor: [String: ZarrJSONValue]?
     public let fillValue: ZarrJSONValue?
-    public let order: Order?
+    public let order: Order
     public let filters: [[String: ZarrJSONValue]]?
     public let dimensionSeparator: String?
 
@@ -30,6 +30,57 @@ public struct V2ArrayMetadata: Codable, Sendable {
         case fillValue = "fill_value"
         case order, filters
         case dimensionSeparator = "dimension_separator"
+    }
+
+    public init(
+        zarrFormat: Int,
+        shape: [UInt64],
+        chunks: [UInt64],
+        dtype: String,
+        compressor: [String: ZarrJSONValue]?,
+        fillValue: ZarrJSONValue?,
+        order: Order? = nil,
+        filters: [[String: ZarrJSONValue]]?,
+        dimensionSeparator: String?
+    ) {
+        self.zarrFormat = zarrFormat
+        self.shape = shape
+        self.chunks = chunks
+        self.dtype = dtype
+        self.compressor = compressor
+        self.fillValue = fillValue
+        self.order = order ?? .C
+        self.filters = filters
+        self.dimensionSeparator = dimensionSeparator
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            zarrFormat: container.decode(Int.self, forKey: .zarrFormat),
+            shape: container.decode([UInt64].self, forKey: .shape),
+            chunks: container.decode([UInt64].self, forKey: .chunks),
+            dtype: container.decode(String.self, forKey: .dtype),
+            compressor: container.decodeIfPresent([String: ZarrJSONValue].self, forKey: .compressor),
+            fillValue: container.decodeIfPresent(ZarrJSONValue.self, forKey: .fillValue),
+            order: container.decodeIfPresent(Order.self, forKey: .order),
+            filters: container.decodeIfPresent([[String: ZarrJSONValue]].self, forKey: .filters),
+            dimensionSeparator: container.decodeIfPresent(String.self, forKey: .dimensionSeparator)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(zarrFormat, forKey: .zarrFormat)
+        try container.encode(shape, forKey: .shape)
+        try container.encode(chunks, forKey: .chunks)
+        try container.encode(dtype, forKey: .dtype)
+        // These fields are required even when their value is null.
+        try container.encode(compressor, forKey: .compressor)
+        try container.encode(fillValue, forKey: .fillValue)
+        try container.encode(filters, forKey: .filters)
+        try container.encode(order, forKey: .order)
+        try container.encodeIfPresent(dimensionSeparator, forKey: .dimensionSeparator)
     }
 
     // MARK: - Convenience accessors

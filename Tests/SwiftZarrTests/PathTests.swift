@@ -143,13 +143,14 @@ func testRootArrayPaths(version: ZarrVersion) async throws {
 @Test(arguments: [ZarrVersion.v2, .v3])
 func testRootGroupPaths(version: ZarrVersion) async throws {
     let storage = PathTestStorage()
-    let root = try ZarrGroup(metadata: pathGroupMetadata(version), storage: storage, path: "///\\")
+    var root = try ZarrGroup(metadata: pathGroupMetadata(version), storage: storage, path: "///\\")
     #expect(root.path.isEmpty)
     try await root.storeMetadata()
     let attrs = V2Attrs(values: ["answer": .int(42)])
-    try await root.storeAttributes(attrs)
+    root.attributes = attrs.values
+    try await root.storeMetadata()
     let reopened = try await ZarrGroup(storage: storage, path: "/")
-    #expect(try await reopened.attributes()?.int(for: "answer") == 42)
+    #expect(reopened.attributes["answer"]?.intValue == 42)
     #expect(await storage.exists(path: version == .v2 ? ".zgroup" : "zarr.json"))
 
     let child = try ZarrArray(metadata: pathArrayMetadata(version), storage: storage, path: "//array//")

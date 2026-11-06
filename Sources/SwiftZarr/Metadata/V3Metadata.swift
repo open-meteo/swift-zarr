@@ -55,7 +55,7 @@ public struct V3ArrayMetadata: Codable, Sendable {
 public struct V3GroupMetadata: Codable, Sendable {
     public let zarrFormat: Int
     public let nodeType: String
-    public let attributes: [String: ZarrJSONValue]?
+    public var attributes: [String: ZarrJSONValue]?
 
     enum CodingKeys: String, CodingKey {
         case zarrFormat = "zarr_format"

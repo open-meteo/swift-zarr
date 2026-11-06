@@ -59,6 +59,17 @@ let t2m = try await group.openArray(name: "2m_temperature")
 let slice: [Float] = try await t2m.retrieveArraySubset([0..<10, 0..<64, 0..<8])
 ```
 
+Group attributes are editable local snapshots for both V2 and V3. Save edits explicitly:
+
+```swift
+let localStorage = LocalFileStorage(basePath: "/path/to/store")
+var group = try await ZarrGroup(storage: localStorage, path: "example")
+group.attributes["description"] = .string("Updated description")
+try await group.storeMetadata()
+```
+
+Copies keep independent snapshots. Reopen a group to read external changes. Failed saves retain local edits for retry; V2 metadata and attributes are written as separate files. This replaces the previous `attributes()` and `storeAttributes(_:)` methods.
+
 ## Development
 
 ```bash

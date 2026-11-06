@@ -15,7 +15,7 @@ public enum ZarrGroupChild: Sendable, Equatable {
     }
 }
 
-/// The original metadata for a Zarr group, preserved in its native format.
+/// Group metadata in its native format.
 public enum ZarrGroupMetadata: Sendable {
     case v2(V2GroupMetadata)
     case v3(V3GroupMetadata)
@@ -33,9 +33,21 @@ private struct V3NodeType: Decodable {
 public struct ZarrGroup: Sendable {
     public let storage: any Storage
     public let path: String
-    /// The original group metadata in its native Zarr version format.
-    public let metadata: ZarrGroupMetadata
+    /// The local metadata snapshot, including current V3 attributes.
+    public var metadata: ZarrGroupMetadata {
+        switch metadataTemplate {
+        case .v2: return metadataTemplate
+        case .v3(var meta):
+            meta.attributes = attributes
+            return .v3(meta)
+        }
+    }
     public let version: ZarrVersion
+    private let metadataTemplate: ZarrGroupMetadata
+
+    /// Local attributes. Call `storeMetadata()` to persist edits.
+    /// Copies and separately opened groups keep independent snapshots.
+    public var attributes: [String: ZarrJSONValue]
 
     public init(storage: any Storage, path: String) async throws {
         let normalizedPath = try normalizeZarrPath(path)
@@ -49,16 +61,30 @@ public struct ZarrGroup: Sendable {
             metadata = .v2(try decoder.decode(V2GroupMetadata.self, from: data))
         }
         try self.init(metadata: metadata, storage: storage, path: path)
+        if case .v2 = metadata {
+            let attrsPath = zarrKey(normalizedPath, ".zattrs")
+            if try await storage.exists(path: attrsPath) {
+                let data = try await storage.read(path: attrsPath)
+                attributes = try decoder.decode(V2Attrs.self, from: data).values
+            }
+        }
     }
 
     /// Create a group from native metadata without reading from storage.
     public init(metadata: ZarrGroupMetadata, storage: any Storage, path: String) throws {
         self.storage = storage
         self.path = try normalizeZarrPath(path)
-        self.metadata = metadata
         switch metadata {
-        case .v2: version = .v2
-        case .v3: version = .v3
+        case .v2:
+            version = .v2
+            attributes = [:]
+            metadataTemplate = metadata
+        case .v3(var meta):
+            version = .v3
+            attributes = meta.attributes ?? [:]
+            // Keep one editable attribute dictionary, without a retained duplicate.
+            meta.attributes = nil
+            metadataTemplate = .v3(meta)
         }
     }
 
@@ -77,38 +103,19 @@ public struct ZarrGroup: Sendable {
         try self.init(metadata: v3Metadata, storage: storage, path: path)
     }
 
-    /// Write the group metadata to storage (`.zgroup` for V2, `zarr.json` for V3).
+    /// Persist the local metadata and attributes snapshot.
+    /// V2 writes `.zgroup` and `.zattrs` separately; V3 writes `zarr.json`.
+    /// Failed saves retain local edits for retry. Reopen to load external changes.
     public func storeMetadata() async throws {
         let encoder = JSONEncoder()
         switch metadata {
         case .v2(let v2meta):
             let data = try encoder.encode(v2meta)
+            let attrs = try encoder.encode(V2Attrs(values: attributes))
             try await storage.write(path: zarrKey(path, ".zgroup"), data: data)
+            try await storage.write(path: zarrKey(path, ".zattrs"), data: attrs)
         case .v3(let v3meta):
-            let fresh = V3GroupMetadata(
-                zarrFormat: 3,
-                nodeType: "group",
-                attributes: v3meta.attributes
-            )
-            let data = try encoder.encode(fresh)
-            try await storage.write(path: zarrKey(path, "zarr.json"), data: data)
-        }
-    }
-
-    /// Write the group attributes (`.zattrs` for V2, inline in `zarr.json` for V3).
-    public func storeAttributes(_ attrs: V2Attrs) async throws {
-        switch version {
-        case .v2:
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(attrs)
-            try await storage.write(path: zarrKey(path, ".zattrs"), data: data)
-        case .v3:
-            let v3meta = V3GroupMetadata(
-                zarrFormat: 3,
-                nodeType: "group",
-                attributes: attrs.values
-            )
-            let data = try JSONEncoder().encode(v3meta)
+            let data = try encoder.encode(v3meta)
             try await storage.write(path: zarrKey(path, "zarr.json"), data: data)
         }
     }
@@ -164,16 +171,4 @@ public struct ZarrGroup: Sendable {
         try await ZarrGroup(storage: storage, path: zarrKey(path, name))
     }
 
-    public func attributes() async throws -> V2Attrs? {
-        switch version {
-        case .v2:
-            let attrsPath = zarrKey(path, ".zattrs")
-            guard try await storage.exists(path: attrsPath) else { return nil }
-            let data = try await storage.read(path: attrsPath)
-            return try JSONDecoder().decode(V2Attrs.self, from: data)
-        case .v3:
-            guard case .v3(let v3meta) = metadata, let attrs = v3meta.attributes else { return nil }
-            return V2Attrs(values: attrs)
-        }
-    }
 }

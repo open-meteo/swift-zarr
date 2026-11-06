@@ -14,7 +14,8 @@ func testV3MetadataInteroperability(endian: String) async throws {
             "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [1, 2]}},
             "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
             "codecs": [{"name": "bytes", "configuration": {"endian": "\(endian)"}}],
-            "fill_value": 0, "dimension_names": ["rows", null]
+            "fill_value": 0, "dimension_names": ["rows", null],
+            "attributes": {"description": "preserve me"}, "storage_transformers": []
         }
         """.utf8
     )
