@@ -4,6 +4,8 @@ public enum ZarrArrayError: Error, Sendable, Equatable {
     case mismatchedDimensions(expected: Int, got: Int)
     case invalidChunkIndex([Int])
     case unsupportedCompressor(String)
+    case unsupportedChunkKeyEncoding(String)
+    case invalidChunkKeySeparator(String)
     case invalidSlice(String)
     case invalidDataSize(expected: Int, got: Int)
 }
@@ -18,7 +20,6 @@ private struct DerivedArrayProperties: Sendable {
     let dataType: ZarrDataType
     let shape: [Int]
     let chunkShape: [Int]
-    let separator: String
     let numChunks: [Int]
     let arrayStride: [Int]
     let orderIsF: Bool
@@ -71,111 +72,79 @@ public struct ZarrArray: Sendable {
     private let _shape: [Int]
     private let _chunkShape: [Int]
     private let _numChunks: [Int]
-    private let _separator: String
+    private let _chunkKeyEncoding: ChunkKeyEncoding
     private let _arrayStride: [Int]
     private let _orderIsF: Bool
     private let _resolvedCodecs: [ResolvedCodec]
     private let _v3Codecs: [V3Codec]
     private let _concurrentLimit: Int
 
-    private static let v3ChunkPrefix = "data/c/"
-
     public var ndim: Int { _shape.count }
     public var elementSize: Int { dataType.elementSize }
     public var shape: [Int] { _shape }
     public var chunkShape: [Int] { _chunkShape }
 
-    private static func normalizePath(_ path: String) -> String {
-        path.hasSuffix("/") ? String(path.dropLast()) : path
-    }
-
     public init(storage: any Storage, path: String) async throws {
-        self.storage = storage
-        let normalizedPath = Self.normalizePath(path)
-        self.path = normalizedPath
-        if try await storage.exists(path: normalizedPath + "/zarr.json") {
-            let metadataData = try await storage.read(path: normalizedPath + "/zarr.json")
-            let decoder = JSONDecoder()
-            let v3meta = try decoder.decode(V3ArrayMetadata.self, from: metadataData)
-            version = .v3
-            metadata = .v3(v3meta)
-            let v2meta = Self.makeV2Meta(from: v3meta)
-            _v2meta = v2meta
-            let derived = try Self.computeDerived(from: v2meta)
-            dataType = derived.dataType
-            _shape = derived.shape
-            _chunkShape = derived.chunkShape
-            _separator = derived.separator
-            _numChunks = derived.numChunks
-            _arrayStride = derived.arrayStride
-            _orderIsF = derived.orderIsF
-            _resolvedCodecs = try Self.resolveCodecs(v3meta.codecs ?? [], elementSize: derived.dataType.elementSize)
-            _v3Codecs = v3meta.codecs ?? []
-            _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
+        let normalizedPath = try normalizeZarrPath(path)
+        let decoder = JSONDecoder()
+        let metadata: ZarrArrayMetadata
+        if try await storage.exists(path: zarrKey(normalizedPath, "zarr.json")) {
+            let data = try await storage.read(path: zarrKey(normalizedPath, "zarr.json"))
+            metadata = .v3(try decoder.decode(V3ArrayMetadata.self, from: data))
         } else {
-            let metadataData = try await storage.read(path: normalizedPath + "/.zarray")
-            let decoder = JSONDecoder()
-            let meta = try decoder.decode(V2ArrayMetadata.self, from: metadataData)
-            version = .v2
-            metadata = .v2(meta)
-            _v2meta = meta
-            let derived = try Self.computeDerived(from: meta)
-            dataType = derived.dataType
-            _shape = derived.shape
-            _chunkShape = derived.chunkShape
-            _separator = derived.separator
-            _numChunks = derived.numChunks
-            _arrayStride = derived.arrayStride
-            _orderIsF = derived.orderIsF
-            let v2Codecs = meta.compressor.map { compressorDictToV3Codecs($0) } ?? []
-            _resolvedCodecs = try Self.resolveCodecs(v2Codecs, elementSize: derived.dataType.elementSize)
-            _v3Codecs = v2Codecs
-            _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
+            let data = try await storage.read(path: zarrKey(normalizedPath, ".zarray"))
+            metadata = .v2(try decoder.decode(V2ArrayMetadata.self, from: data))
         }
+        try self.init(metadata: metadata, storage: storage, path: path)
     }
 
-    /// Create an array from in-memory V2 metadata without reading from storage.
-    public init(metadata: V2ArrayMetadata, storage: any Storage, path: String) throws {
+    /// Create an array from native metadata without reading from storage.
+    public init(metadata: ZarrArrayMetadata, storage: any Storage, path: String) throws {
         self.storage = storage
-        let normalizedPath = Self.normalizePath(path)
-        self.path = normalizedPath
-        version = .v2
-        self.metadata = .v2(metadata)
-        _v2meta = metadata
-        let derived = try Self.computeDerived(from: metadata)
-        dataType = derived.dataType
-        _shape = derived.shape
-        _chunkShape = derived.chunkShape
-        _separator = derived.separator
-        _numChunks = derived.numChunks
-        _arrayStride = derived.arrayStride
-        _orderIsF = derived.orderIsF
-        let v2Codecs = metadata.compressor.map { compressorDictToV3Codecs($0) } ?? []
-        _resolvedCodecs = try Self.resolveCodecs(v2Codecs, elementSize: derived.dataType.elementSize)
-        _v3Codecs = v2Codecs
-        _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
-    }
+        self.path = try normalizeZarrPath(path)
+        self.metadata = metadata
 
-    /// Create an array from in-memory V3 metadata without reading from storage.
-    public init(v3Metadata: V3ArrayMetadata, storage: any Storage, path: String) throws {
-        self.storage = storage
-        let normalizedPath = Self.normalizePath(path)
-        self.path = normalizedPath
-        version = .v3
-        metadata = .v3(v3Metadata)
-        let v2meta = Self.makeV2Meta(from: v3Metadata)
+        let v2meta: V2ArrayMetadata
+        let codecs: [V3Codec]
+        switch metadata {
+        case .v2(let meta):
+            version = .v2
+            v2meta = meta
+            codecs = meta.compressor.map { compressorDictToV3Codecs($0) } ?? []
+            _chunkKeyEncoding = .v2(separator: meta.dimensionSeparator ?? ".")
+        case .v3(let meta):
+            version = .v3
+            v2meta = Self.makeV2Meta(from: meta)
+            codecs = meta.codecs ?? []
+            _chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
+        }
+
         _v2meta = v2meta
         let derived = try Self.computeDerived(from: v2meta)
         dataType = derived.dataType
         _shape = derived.shape
         _chunkShape = derived.chunkShape
-        _separator = derived.separator
         _numChunks = derived.numChunks
         _arrayStride = derived.arrayStride
         _orderIsF = derived.orderIsF
-        _resolvedCodecs = try Self.resolveCodecs(v3Metadata.codecs ?? [], elementSize: derived.dataType.elementSize)
-        _v3Codecs = v3Metadata.codecs ?? []
+        _resolvedCodecs = try Self.resolveCodecs(codecs, elementSize: derived.dataType.elementSize)
+        _v3Codecs = codecs
         _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
+    }
+
+    /// Create an array from in-memory V2 metadata without reading from storage.
+    public init(metadata: V2ArrayMetadata, storage: any Storage, path: String) throws {
+        try self.init(metadata: .v2(metadata), storage: storage, path: path)
+    }
+
+    /// Create an array from in-memory V3 metadata without reading from storage.
+    public init(metadata: V3ArrayMetadata, storage: any Storage, path: String) throws {
+        try self.init(metadata: .v3(metadata), storage: storage, path: path)
+    }
+
+    @available(*, deprecated, renamed: "init(metadata:storage:path:)")
+    public init(v3Metadata: V3ArrayMetadata, storage: any Storage, path: String) throws {
+        try self.init(metadata: v3Metadata, storage: storage, path: path)
     }
 
     /// Build a V2ArrayMetadata view of a V3ArrayMetadata, used internally during init.
@@ -227,7 +196,6 @@ public struct ZarrArray: Sendable {
         let s = meta.shape.map(Int.init)
         let c = meta.chunks.map(Int.init)
         let ndim = s.count
-        let separator = meta.dimensionSeparator ?? "."
         let numChunks = (0..<ndim).map { d in (s[d] + c[d] - 1) / c[d] }
         var stride = [Int](repeating: 1, count: ndim)
         if ndim >= 2 {
@@ -240,7 +208,6 @@ public struct ZarrArray: Sendable {
             dataType: parsed,
             shape: s,
             chunkShape: c,
-            separator: separator,
             numChunks: numChunks,
             arrayStride: stride,
             orderIsF: orderIsF
@@ -267,15 +234,11 @@ public struct ZarrArray: Sendable {
         }
     }
 
-    /// Build the storage key for a chunk.
-    /// V2: `{i}.{j}.{k}` (separator-joined indices); scalar (0-D) uses `"0"`.
-    /// V3: `data/c/{i}/{j}/{k}` (with prefix per Zarr V3 spec); scalar uses `"data/c/0"`.
+    /// Build the storage key using the array's resolved chunk-key encoding.
+    /// V2 encoding uses separator-joined indices, or "0" for a scalar.
+    /// V3 default encoding prefixes indices with "c", or uses "c" for a scalar.
     public func chunkKey(_ indices: [Int]) -> String {
-        let key = indices.isEmpty ? "0" : indices.map(String.init).joined(separator: _separator)
-        if version == .v3 {
-            return Self.v3ChunkPrefix + key
-        }
-        return key
+        _chunkKeyEncoding.key(indices)
     }
 
     // MARK: - Typed reads
@@ -290,7 +253,7 @@ public struct ZarrArray: Sendable {
     /// Retrieve and decode a single chunk, returning `nil` if the chunk file does not exist.
     public func retrieveChunkIfExists<T: ZarrElement>(_ indices: [Int]) async throws -> [T]? {
         try validateIndices(indices)
-        let key = path + "/" + chunkKey(indices)
+        let key = zarrKey(path, chunkKey(indices))
         guard try await storage.exists(path: key) else { return nil }
         let raw = try await storage.read(path: key)
         let data = try decompress(raw)
@@ -465,7 +428,7 @@ public struct ZarrArray: Sendable {
     /// Falls back to fill value if the chunk file does not exist.
     internal func readChunkRaw(_ indices: [Int]) async throws -> Data {
         try validateIndices(indices)
-        let key = path + "/" + chunkKey(indices)
+        let key = zarrKey(path, chunkKey(indices))
         if try await storage.exists(path: key) {
             let raw = try await storage.read(path: key)
             return try decompress(raw)
@@ -597,7 +560,7 @@ public struct ZarrArray: Sendable {
         switch version {
         case .v2:
             let data = try encoder.encode(_v2meta)
-            try await storage.write(path: path + "/.zarray", data: data)
+            try await storage.write(path: zarrKey(path, ".zarray"), data: data)
         case .v3:
             let v3meta = V3ArrayMetadata(
                 zarrFormat: 3,
@@ -608,10 +571,7 @@ public struct ZarrArray: Sendable {
                     name: "regular",
                     configuration: .init(chunkShape: _v2meta.chunks)
                 ),
-                chunkKeyEncoding: .init(
-                    name: "default",
-                    configuration: .init(separator: _separator)
-                ),
+                chunkKeyEncoding: _chunkKeyEncoding.v3Metadata,
                 fillValue: _v2meta.fillValue,
                 codecs: _v3Codecs.isEmpty ? nil : _v3Codecs,
                 storageTransformers: nil,
@@ -619,7 +579,7 @@ public struct ZarrArray: Sendable {
                 attributes: nil
             )
             let data = try encoder.encode(v3meta)
-            try await storage.write(path: path + "/zarr.json", data: data)
+            try await storage.write(path: zarrKey(path, "zarr.json"), data: data)
         }
     }
 
@@ -632,14 +592,14 @@ public struct ZarrArray: Sendable {
             throw ZarrArrayError.invalidDataSize(expected: expectedSize, got: data.count)
         }
         let encoded = try encode(data)
-        let key = path + "/" + chunkKey(indices)
+        let key = zarrKey(path, chunkKey(indices))
         try await storage.write(path: key, data: encoded)
     }
 
     /// Delete a single chunk from storage.
     public func eraseChunk(_ indices: [Int]) async throws {
         try validateIndices(indices)
-        let key = path + "/" + chunkKey(indices)
+        let key = zarrKey(path, chunkKey(indices))
         try await storage.delete(path: key)
     }
 

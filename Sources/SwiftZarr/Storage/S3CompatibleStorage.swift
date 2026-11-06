@@ -41,7 +41,7 @@ public final class S3CompatibleStorage: Storage {
     }
 
     private func listingRequest(prefix: String, marker: String? = nil) throws -> HTTPClientRequest {
-        let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
+        let normalizedPrefix = prefix.isEmpty || prefix.hasSuffix("/") ? prefix : prefix + "/"
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw StorageError.invalidURL(baseURL.absoluteString)
         }
@@ -135,7 +135,7 @@ public final class S3CompatibleStorage: Storage {
             allPrefixes.append(contentsOf: prefixes)
             marker = isTruncated ? nextMarker : nil
         } while marker != nil
-        let normalizedPrefix = prefix.hasSuffix("/") ? prefix : prefix + "/"
+        let normalizedPrefix = prefix.isEmpty || prefix.hasSuffix("/") ? prefix : prefix + "/"
         return allPrefixes.map {
             var name = $0
             if name.hasPrefix(normalizedPrefix) {
