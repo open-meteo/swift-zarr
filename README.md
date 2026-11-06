@@ -79,6 +79,7 @@ swift test
 
 ## TODO
 
+- V2 filter support (nonempty filter chains are currently rejected)
 - Zstd codec (requires a separate dependency not included in SWCompression)
 - Consolidated metadata (`.zmetadata`) to reduce round-trips on remote storage
 - LRU chunk cache to avoid redundant decompression for overlapping reads

@@ -17,6 +17,9 @@ internal struct CodecPipeline: Sendable {
     private let compressors: [any Codec]
 
     init(v2 metadata: V2ArrayMetadata, dataType: ZarrDataType) throws {
+        guard metadata.filters?.isEmpty != false else {
+            throw ZarrArrayError.unsupportedFilters
+        }
         serializer = .bytes(endian: dataType.endian)
         let codecs = metadata.compressor.map { compressorDictToV3Codecs($0) } ?? []
         if metadata.compressor != nil && codecs.isEmpty {
