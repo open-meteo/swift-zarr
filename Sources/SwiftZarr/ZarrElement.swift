@@ -1,6 +1,7 @@
 import Foundation
 
 public enum ZarrElementError: Error, Sendable {
+    case invalidByteCount(Int, elementSize: Int)
     case typeMismatch(expected: ZarrDataType.Kind, expectedSize: Int, actual: ZarrDataType)
 }
 
@@ -17,6 +18,9 @@ extension Float: ZarrElement {
     public static var zarrDtypeSize: Int { 4 }
 
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Float] {
+        guard data.count % MemoryLayout<Float>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Float>.size)
+        }
         let count = data.count / MemoryLayout<Float>.size
         var result = [Float](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in
@@ -34,6 +38,9 @@ extension Double: ZarrElement {
     public static var zarrDtypeSize: Int { 8 }
 
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Double] {
+        guard data.count % MemoryLayout<Double>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Double>.size)
+        }
         let count = data.count / MemoryLayout<Double>.size
         var result = [Double](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in
@@ -60,6 +67,9 @@ extension Int16: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 2 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int16] {
+        guard data.count % MemoryLayout<Int16>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Int16>.size)
+        }
         let count = data.count / MemoryLayout<Int16>.size
         var result = [Int16](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
@@ -74,6 +84,9 @@ extension Int32: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 4 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int32] {
+        guard data.count % MemoryLayout<Int32>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Int32>.size)
+        }
         let count = data.count / MemoryLayout<Int32>.size
         var result = [Int32](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
@@ -88,6 +101,9 @@ extension Int64: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .int }
     public static var zarrDtypeSize: Int { 8 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Int64] {
+        guard data.count % MemoryLayout<Int64>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Int64>.size)
+        }
         let count = data.count / MemoryLayout<Int64>.size
         var result = [Int64](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
@@ -112,6 +128,9 @@ extension UInt16: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 2 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt16] {
+        guard data.count % MemoryLayout<UInt16>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<UInt16>.size)
+        }
         let count = data.count / MemoryLayout<UInt16>.size
         var result = [UInt16](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
@@ -126,6 +145,9 @@ extension UInt32: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 4 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt32] {
+        guard data.count % MemoryLayout<UInt32>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<UInt32>.size)
+        }
         let count = data.count / MemoryLayout<UInt32>.size
         var result = [UInt32](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
@@ -140,6 +162,9 @@ extension UInt64: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .uint }
     public static var zarrDtypeSize: Int { 8 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [UInt64] {
+        guard data.count % MemoryLayout<UInt64>.size == 0 else {
+            throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<UInt64>.size)
+        }
         let count = data.count / MemoryLayout<UInt64>.size
         var result = [UInt64](repeating: 0, count: count)
         _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
