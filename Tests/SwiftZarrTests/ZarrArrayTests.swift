@@ -918,13 +918,14 @@ func testGroupAttrs() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let storage = LocalFileStorage(basePath: tmp)
-    let group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
+    var group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
     try await group.storeMetadata()
-    try await group.storeAttributes(V2Attrs(values: ["key1": .string("value1"), "key2": .int(42)]))
+    group.attributes = ["key1": .string("value1"), "key2": .int(42)]
+    try await group.storeMetadata()
 
-    let decodedAttrs = try await ZarrGroup(storage: storage, path: "group").attributes()
-    #expect(decodedAttrs?.values["key1"]?.stringValue == "value1")
-    #expect(decodedAttrs?.values["key2"]?.intValue == 42)
+    let decodedAttrs = try await ZarrGroup(storage: storage, path: "group").attributes
+    #expect(decodedAttrs["key1"]?.stringValue == "value1")
+    #expect(decodedAttrs["key2"]?.intValue == 42)
 }
 
 @Test
@@ -1002,13 +1003,14 @@ func testZarrJSONValueArrayInAttrs() async throws {
 
     let attrs = V2Attrs(values: ["tags": .array([.string("a"), .string("b")])])
     let storage = LocalFileStorage(basePath: tmp)
-    let group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "g")
+    var group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "g")
     try await group.storeMetadata()
-    try await group.storeAttributes(attrs)
+    group.attributes = attrs.values
+    try await group.storeMetadata()
 
     let reopened = try await ZarrGroup(storage: storage, path: "g")
-    let decoded = try await reopened.attributes()
-    let tags = decoded?.values["tags"]?.arrayValue
+    let decoded = reopened.attributes
+    let tags = decoded["tags"]?.arrayValue
     #expect(tags?.count == 2)
     #expect(tags?[0].stringValue == "a")
     #expect(tags?[1].stringValue == "b")
@@ -1251,24 +1253,51 @@ func testV3GroupWriteRead() async throws {
     #expect(try await storage.exists(path: "v3group/zarr.json"))
 }
 
-@Test
-func testV3GroupAttrs() async throws {
+@Test(arguments: [ZarrVersion.v2, .v3])
+func testGroupAttributeSnapshots(version: ZarrVersion) async throws {
     let tmp = try createTempDir()
     defer { try? FileManager.default.removeItem(atPath: tmp) }
-
-    let v3meta = V3GroupMetadata(
-        zarrFormat: 3,
-        nodeType: "group",
-        attributes: ["key1": .string("v3value"), "key2": .int(99)]
-    )
     let storage = LocalFileStorage(basePath: tmp)
-    let group = try ZarrGroup(metadata: v3meta, storage: storage, path: "v3group")
+    let metadata: ZarrGroupMetadata =
+        version == .v2
+        ? .v2(V2GroupMetadata(zarrFormat: 2))
+        : .v3(V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil))
+    var group = try ZarrGroup(metadata: metadata, storage: storage, path: "group")
+    #expect(group.attributes.isEmpty)
+    group.attributes["a"] = .int(1)
     try await group.storeMetadata()
+    let opened = try await ZarrGroup(storage: storage, path: "group")
+    let copy = group
 
-    let reopened = try await ZarrGroup(storage: storage, path: "v3group")
-    let attrs = try await reopened.attributes()
-    #expect(attrs?.values["key1"]?.stringValue == "v3value")
-    #expect(attrs?.values["key2"]?.intValue == 99)
+    group.attributes["a"] = .int(2)
+    #expect(copy.attributes["a"] == .int(1))
+    #expect(opened.attributes["a"] == .int(1))
+    let beforeSave = try await ZarrGroup(storage: storage, path: "group")
+    #expect(beforeSave.attributes["a"] == .int(1))
+    if case .v3(let snapshot) = group.metadata {
+        #expect(snapshot.attributes == group.attributes)
+    }
+    try await group.storeMetadata()
+    let afterSave = try await ZarrGroup(storage: storage, path: "group")
+    #expect(afterSave.attributes["a"] == .int(2))
+    #expect(opened.attributes["a"] == .int(1))
+
+    // A failed save retains edits, which can be retried.
+    let attrsPath = tmp + (version == .v2 ? "/group/.zattrs" : "/group/zarr.json")
+    try FileManager.default.removeItem(atPath: attrsPath)
+    try FileManager.default.createDirectory(atPath: attrsPath, withIntermediateDirectories: false)
+    group.attributes["a"] = .int(3)
+    await #expect(throws: (any Error).self) { try await group.storeMetadata() }
+    #expect(group.attributes["a"] == .int(3))
+    try FileManager.default.removeItem(atPath: attrsPath)
+    try await group.storeMetadata()
+    let retried = try await ZarrGroup(storage: storage, path: "group")
+    #expect(retried.attributes["a"] == .int(3))
+
+    group.attributes.removeAll()
+    try await group.storeMetadata()
+    let cleared = try await ZarrGroup(storage: storage, path: "group")
+    #expect(cleared.attributes.isEmpty)
 }
 
 @Test
@@ -1739,4 +1768,72 @@ func testEraseChunk() async throws {
     try await array.eraseChunk([0])
     let after: [Int32] = try await array.retrieveChunk([0])
     #expect(after == [99, 99, 99, 99])
+}
+
+@Test
+func testV2MetadataRequiredFields() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+    let storage = LocalFileStorage(basePath: tmp)
+    let metadata = V2ArrayMetadata(
+        zarrFormat: 2,
+        shape: [2],
+        chunks: [2],
+        dtype: "<i4",
+        compressor: nil,
+        fillValue: nil,
+        order: nil,
+        filters: nil,
+        dimensionSeparator: nil
+    )
+    #expect(metadata.order == .C)
+    let array = try ZarrArray(metadata: metadata, storage: storage, path: "array")
+    try await array.storeMetadata()
+    let raw = try await storage.read(path: "array/.zarray")
+    let json = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
+    for key in ["compressor", "fill_value", "filters"] {
+        #expect(json[key] is NSNull)
+    }
+    #expect(json["order"] as? String == "C")
+    #expect(json["dimension_separator"] == nil)
+    let reopened = try await ZarrArray(storage: storage, path: "array")
+    try await reopened.storeMetadata()
+    let saved = try await storage.read(path: "array/.zarray")
+    #expect(try JSONSerialization.jsonObject(with: saved) as? NSDictionary == json as NSDictionary)
+}
+
+@Test(arguments: ["", ", \"order\": null", ", \"order\": \"F\""])
+func testV2OrderDefault(field: String) throws {
+    let json = Data("{\"zarr_format\":2,\"shape\":[2],\"chunks\":[2],\"dtype\":\"<i4\"\(field)}".utf8)
+    let metadata = try JSONDecoder().decode(V2ArrayMetadata.self, from: json)
+    #expect(metadata.order == (field.contains("F") ? .F : .C))
+}
+
+@Test
+func testV2GroupWithoutAttributes() async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+    let storage = LocalFileStorage(basePath: tmp)
+    try await storage.write(path: ".zgroup", data: Data(#"{"zarr_format":2}"#.utf8))
+    var group = try await ZarrGroup(storage: storage, path: "")
+    #expect(group.attributes.isEmpty)
+    group.attributes["a"] = .int(1)
+    try await group.storeMetadata()
+    let reopened = try await ZarrGroup(storage: storage, path: "")
+    #expect(reopened.attributes == ["a": .int(1)])
+}
+
+@Test(arguments: [ZarrVersion.v2, .v3])
+func testGroupEncodingFailureDoesNotWrite(version: ZarrVersion) async throws {
+    let tmp = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: tmp) }
+    let storage = LocalFileStorage(basePath: tmp)
+    let metadata: ZarrGroupMetadata =
+        version == .v2
+        ? .v2(V2GroupMetadata(zarrFormat: 2))
+        : .v3(V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil))
+    var group = try ZarrGroup(metadata: metadata, storage: storage, path: "")
+    group.attributes["invalid"] = .double(.infinity)
+    await #expect(throws: EncodingError.self) { try await group.storeMetadata() }
+    #expect(try await storage.list(prefix: "").isEmpty)
 }
