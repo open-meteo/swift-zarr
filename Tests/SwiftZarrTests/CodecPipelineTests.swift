@@ -4,6 +4,32 @@ import Testing
 @testable import SwiftZarr
 
 @Test
+func testV2Filters() throws {
+    let cases: [[[String: ZarrJSONValue]]?] = [nil, [], [["id": .string("delta")]], [[:]]]
+    for filters in cases {
+        let metadata = V2ArrayMetadata(
+            zarrFormat: 2,
+            shape: [2],
+            chunks: [2],
+            dtype: "<i4",
+            compressor: nil,
+            fillValue: nil,
+            order: .C,
+            filters: filters,
+            dimensionSeparator: nil
+        )
+        let storage = LocalFileStorage(basePath: NSTemporaryDirectory())
+        if filters?.isEmpty == false {
+            #expect(throws: ZarrArrayError.unsupportedFilters) {
+                try ZarrArray(metadata: metadata, storage: storage, path: "array")
+            }
+        } else {
+            _ = try ZarrArray(metadata: metadata, storage: storage, path: "array")
+        }
+    }
+}
+
+@Test
 func testInvalidV3CodecPipelines() throws {
     let bytes = V3Codec(name: "bytes", configuration: ["endian": .string("little")])
     let gzip = V3Codec(name: "gzip", configuration: nil)

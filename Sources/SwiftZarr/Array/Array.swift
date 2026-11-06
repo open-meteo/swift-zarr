@@ -5,6 +5,7 @@ public enum ZarrArrayError: Error, Sendable, Equatable {
     case invalidChunkIndex([Int])
     case invalidCodecConfiguration(String)
     case unsupportedCompressor(String)
+    case unsupportedFilters
     case unsupportedChunkKeyEncoding(String)
     case invalidChunkKeySeparator(String)
     case invalidSlice(String)
