@@ -11,7 +11,7 @@ public struct V3ArrayMetadata: Codable, Sendable {
     public let fillValue: ZarrJSONValue?
     public let codecs: [V3Codec]?
     public let storageTransformers: [ZarrJSONValue]?
-    public let dimensionNames: [String]?
+    public let dimensionNames: [String?]?
     public let attributes: [String: ZarrJSONValue]?
 
     public struct ChunkGrid: Codable, Sendable {
@@ -21,6 +21,10 @@ public struct V3ArrayMetadata: Codable, Sendable {
 
     public struct ChunkGridConfiguration: Codable, Sendable {
         public let chunkShape: [UInt64]
+
+        enum CodingKeys: String, CodingKey {
+            case chunkShape = "chunk_shape"
+        }
     }
 
     public struct ChunkKeyEncoding: Codable, Sendable {
@@ -73,27 +77,6 @@ public struct V3Codec: Codable, Sendable {
 public enum ZarrVersion: String, Sendable, Equatable {
     case v2
     case v3
-}
-
-/// Convert V3 metadata fields to a V2-compatible compressor dictionary.
-func v3CodecsToV2Compressor(_ codecs: [V3Codec]?) -> [String: ZarrJSONValue]? {
-    guard let codecs = codecs else { return nil }
-    for codec in codecs {
-        let shortName = codec.shortName
-        switch shortName {
-        case "gzip", "blosc", "zlib", "bz2":
-            var config: [String: ZarrJSONValue] = ["id": .string(shortName)]
-            if let cfg = codec.configuration {
-                for (key, value) in cfg {
-                    config[key] = value
-                }
-            }
-            return config
-        default:
-            continue
-        }
-    }
-    return nil
 }
 
 /// Convert a V2 compressor dictionary to a V3 codec array.

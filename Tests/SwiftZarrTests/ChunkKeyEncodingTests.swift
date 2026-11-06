@@ -10,11 +10,11 @@ private func keyEncodingMetadata(
         zarrFormat: 3,
         nodeType: "array",
         shape: [2, 3],
-        dataType: "<i4",
+        dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: [1, 1])),
         chunkKeyEncoding: encoding,
         fillValue: .int(-1),
-        codecs: nil,
+        codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
         storageTransformers: nil,
         dimensionNames: nil,
         attributes: nil
