@@ -1175,6 +1175,25 @@ func testBloscCodecRoundtrip() async throws {
 }
 
 @Test
+func testBloscRejectsMalformedBuffers() throws {
+    let valid = try BloscCodec().encode(int32LERange(100))
+    var invalidBlockSize = valid
+    invalidBlockSize.replaceSubrange(8..<12, with: [0, 0, 0, 0])
+    for data in [
+        Data(), Data(valid.prefix(15)), Data(valid.dropLast()), valid + Data([0]),
+        invalidBlockSize,
+    ] {
+        #expect(throws: BloscError.self) { try BloscCodec().decode(data) }
+    }
+}
+
+@Test
+func testBloscEmptyBuffer() throws {
+    let codec = BloscCodec()
+    #expect(try codec.decode(codec.encode(Data())).isEmpty)
+}
+
+@Test
 func testBloscLZ4HCWorks() async throws {
     let original = int32LERange(100)
     let compressed = try BloscCodec(compressorName: "lz4hc").encode(original)
