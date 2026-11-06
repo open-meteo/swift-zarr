@@ -6,21 +6,17 @@ public struct BloscCodec: Codec {
     private let shuffle: CInt
     private let typesize: Int
     private let compressorName: String
-    private let maxDecodedSize: Int
 
-    /// `maxDecodedSize` bounds allocation when decoding untrusted buffers (256 MiB by default).
     public init(
         clevel: CInt = 5,
         shuffle: CInt = 1,
         typesize: Int = 4,
-        compressorName: String = "lz4",
-        maxDecodedSize: Int = 256 * 1024 * 1024
+        compressorName: String = "lz4"
     ) {
         self.clevel = clevel
         self.shuffle = shuffle
         self.typesize = typesize
         self.compressorName = compressorName
-        self.maxDecodedSize = maxDecodedSize
     }
 
     public func decode(_ data: Data) throws -> Data {
@@ -32,9 +28,6 @@ public struct BloscCodec: Codec {
         }
         guard validation == 0 else {
             throw BloscError.invalidData("invalid blosc buffer")
-        }
-        guard destSize <= maxDecodedSize else {
-            throw BloscError.invalidData("decoded size exceeds limit of \(maxDecodedSize) bytes")
         }
         // Blosc represents an empty source with a valid header and a decoded size of zero.
         if destSize == 0 { return Data() }

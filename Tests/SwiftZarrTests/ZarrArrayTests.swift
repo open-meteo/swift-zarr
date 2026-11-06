@@ -1179,30 +1179,17 @@ func testBloscRejectsMalformedBuffers() throws {
     let valid = try BloscCodec().encode(int32LERange(100))
     var invalidBlockSize = valid
     invalidBlockSize.replaceSubrange(8..<12, with: [0, 0, 0, 0])
-    var oversized = valid
-    // 256 MiB + 1, within Blosc's own limit but above our allocation limit.
-    oversized.replaceSubrange(4..<8, with: [1, 0, 0, 16])
     for data in [
         Data(), Data(valid.prefix(15)), Data(valid.dropLast()), valid + Data([0]),
-        invalidBlockSize, oversized,
+        invalidBlockSize,
     ] {
         #expect(throws: BloscError.self) { try BloscCodec().decode(data) }
     }
 }
 
 @Test
-func testBloscDecodedSizeLimit() throws {
-    let original = int32LERange(100)
-    let compressed = try BloscCodec().encode(original)
-    #expect(throws: BloscError.self) {
-        try BloscCodec(maxDecodedSize: original.count - 1).decode(compressed)
-    }
-    #expect(try BloscCodec(maxDecodedSize: original.count).decode(compressed) == original)
-}
-
-@Test
 func testBloscEmptyBuffer() throws {
-    let codec = BloscCodec(maxDecodedSize: 0)
+    let codec = BloscCodec()
     #expect(try codec.decode(codec.encode(Data())).isEmpty)
 }
 
