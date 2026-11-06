@@ -459,20 +459,20 @@ func testV3SeparatorDot() async throws {
         attributes: nil
     )
     let storage = LocalFileStorage(basePath: tmp)
-    let array = try ZarrArray(v3Metadata: v3meta, storage: storage, path: "arr")
+    let array = try ZarrArray(metadata: v3meta, storage: storage, path: "arr")
     #expect(array.version == .v3)
     try await array.storeMetadata()
     try await storeAllChunks(array: array, data: data)
 
-    #expect(try await storage.exists(path: "arr/data/c/0.0"))
-    #expect(try await storage.exists(path: "arr/data/c/0.1"))
-    #expect(array.chunkKey([0, 0]) == "data/c/0.0")
+    #expect(try await storage.exists(path: "arr/c.0.0"))
+    #expect(try await storage.exists(path: "arr/c.0.1"))
+    #expect(array.chunkKey([0, 0]) == "c.0.0")
 
     let readData = try await array.readRaw()
     #expect(readData == data)
 
     let reopened = try await ZarrArray(storage: storage, path: "arr")
-    #expect(reopened.chunkKey([0, 0]) == "data/c/0.0")
+    #expect(reopened.chunkKey([0, 0]) == "c.0.0")
     #expect(try await reopened.readRaw() == data)
 }
 
@@ -721,7 +721,7 @@ func testGroupHierarchy() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let storage = LocalFileStorage(basePath: tmp)
-    let group = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
+    let group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
     try await group.storeMetadata()
 
     let data1 = int32LERange(12)
@@ -775,9 +775,9 @@ func testNestedGroups() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let storage = LocalFileStorage(basePath: tmp)
-    let root = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "root")
+    let root = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "root")
     try await root.storeMetadata()
-    let sub = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "root/sub")
+    let sub = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "root/sub")
     try await sub.storeMetadata()
 
     let data = int32LERange(6)
@@ -907,7 +907,7 @@ func testListEmptyGroup() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let storage = LocalFileStorage(basePath: tmp)
-    let group = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "empty")
+    let group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "empty")
     try await group.storeMetadata()
     #expect(try await ZarrGroup(storage: storage, path: "empty").listChildren().isEmpty)
 }
@@ -918,7 +918,7 @@ func testGroupAttrs() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let storage = LocalFileStorage(basePath: tmp)
-    let group = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
+    let group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "group")
     try await group.storeMetadata()
     try await group.storeAttributes(V2Attrs(values: ["key1": .string("value1"), "key2": .int(42)]))
 
@@ -1002,7 +1002,7 @@ func testZarrJSONValueArrayInAttrs() async throws {
 
     let attrs = V2Attrs(values: ["tags": .array([.string("a"), .string("b")])])
     let storage = LocalFileStorage(basePath: tmp)
-    let group = ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "g")
+    let group = try ZarrGroup(metadata: V2GroupMetadata(zarrFormat: 2), storage: storage, path: "g")
     try await group.storeMetadata()
     try await group.storeAttributes(attrs)
 
@@ -1211,15 +1211,15 @@ func testV3ArrayWriteRead() async throws {
         attributes: nil
     )
     let storage = LocalFileStorage(basePath: tmp)
-    let array = try ZarrArray(v3Metadata: v3meta, storage: storage, path: "v3arr")
+    let array = try ZarrArray(metadata: v3meta, storage: storage, path: "v3arr")
     #expect(array.version == .v3)
     try await array.storeMetadata()
     try await storeAllChunks(array: array, data: data)
 
-    #expect(array.chunkKey([0, 0]) == "data/c/0/0")
-    #expect(array.chunkKey([1, 1]) == "data/c/1/1")
-    #expect(try await storage.exists(path: "v3arr/data/c/0/0"))
-    #expect(try await storage.exists(path: "v3arr/data/c/1/1"))
+    #expect(array.chunkKey([0, 0]) == "c/0/0")
+    #expect(array.chunkKey([1, 1]) == "c/1/1")
+    #expect(try await storage.exists(path: "v3arr/c/0/0"))
+    #expect(try await storage.exists(path: "v3arr/c/1/1"))
 
     let readData = try await array.readRaw()
     #expect(readData == data)
@@ -1242,7 +1242,7 @@ func testV3GroupWriteRead() async throws {
         attributes: nil
     )
     let storage = LocalFileStorage(basePath: tmp)
-    let group = ZarrGroup(v3Metadata: v3meta, storage: storage, path: "v3group")
+    let group = try ZarrGroup(metadata: v3meta, storage: storage, path: "v3group")
     #expect(group.version == .v3)
     try await group.storeMetadata()
 
@@ -1262,7 +1262,7 @@ func testV3GroupAttrs() async throws {
         attributes: ["key1": .string("v3value"), "key2": .int(99)]
     )
     let storage = LocalFileStorage(basePath: tmp)
-    let group = ZarrGroup(v3Metadata: v3meta, storage: storage, path: "v3group")
+    let group = try ZarrGroup(metadata: v3meta, storage: storage, path: "v3group")
     try await group.storeMetadata()
 
     let reopened = try await ZarrGroup(storage: storage, path: "v3group")
@@ -1277,8 +1277,8 @@ func testV3NestedGroups() async throws {
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
     let storage = LocalFileStorage(basePath: tmp)
-    let root = ZarrGroup(
-        v3Metadata: V3GroupMetadata(
+    let root = try ZarrGroup(
+        metadata: V3GroupMetadata(
             zarrFormat: 3,
             nodeType: "group",
             attributes: nil
@@ -1292,7 +1292,7 @@ func testV3NestedGroups() async throws {
     let shape: [UInt64] = [2, 3]
     let chunkShape: [UInt64] = [2, 3]
     let arr = try ZarrArray(
-        v3Metadata: V3ArrayMetadata(
+        metadata: V3ArrayMetadata(
             zarrFormat: 3,
             nodeType: "array",
             shape: shape,
@@ -1328,16 +1328,16 @@ func testV3NestedGroupChildClassification() async throws {
     let storage = LocalFileStorage(basePath: tmp)
 
     // Root V3 group
-    let root = ZarrGroup(
-        v3Metadata: V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil),
+    let root = try ZarrGroup(
+        metadata: V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil),
         storage: storage,
         path: "root"
     )
     try await root.storeMetadata()
 
     // V3 sub-group nested inside root
-    let sub = ZarrGroup(
-        v3Metadata: V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil),
+    let sub = try ZarrGroup(
+        metadata: V3GroupMetadata(zarrFormat: 3, nodeType: "group", attributes: nil),
         storage: storage,
         path: "root/sub"
     )
@@ -1346,7 +1346,7 @@ func testV3NestedGroupChildClassification() async throws {
     // V3 array nested inside the sub-group
     let data = int32LERange(4)
     let arr = try ZarrArray(
-        v3Metadata: V3ArrayMetadata(
+        metadata: V3ArrayMetadata(
             zarrFormat: 3,
             nodeType: "array",
             shape: [4],
@@ -1404,7 +1404,7 @@ func testV3CompressorRoundtrip() async throws {
         attributes: nil
     )
     let storage = LocalFileStorage(basePath: tmp)
-    let array = try ZarrArray(v3Metadata: v3meta, storage: storage, path: "v3comp")
+    let array = try ZarrArray(metadata: v3meta, storage: storage, path: "v3comp")
     try await array.storeMetadata()
     try await storeAllChunks(array: array, data: data)
     #expect(try await array.readRaw() == data)
