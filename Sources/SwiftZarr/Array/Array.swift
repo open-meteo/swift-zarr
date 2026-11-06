@@ -3,6 +3,7 @@ import Foundation
 public enum ZarrArrayError: Error, Sendable, Equatable {
     case mismatchedDimensions(expected: Int, got: Int)
     case invalidChunkIndex([Int])
+    case invalidCodecConfiguration(String)
     case unsupportedCompressor(String)
     case unsupportedChunkKeyEncoding(String)
     case invalidChunkKeySeparator(String)
@@ -17,21 +18,11 @@ public enum ZarrArrayMetadata: Sendable {
 }
 
 private struct DerivedArrayProperties: Sendable {
-    let dataType: ZarrDataType
     let shape: [Int]
     let chunkShape: [Int]
     let numChunks: [Int]
     let arrayStride: [Int]
     let orderIsF: Bool
-}
-
-private enum ResolvedCodec: Sendable {
-    case none
-    case gzip
-    case zlib
-    case bz2(level: Int)
-    case lz4
-    case blosc(cname: String, clevel: CInt, shuffle: CInt, typesize: Int)
 }
 
 /// A flat buffer of chunk indices using a single heap allocation.
@@ -64,10 +55,7 @@ public struct ZarrArray: Sendable {
     public let dataType: ZarrDataType
     public let version: ZarrVersion
 
-    /// The internal V2 view of the metadata, used by all read/write logic.
-    /// For V2 arrays this is the stored metadata directly; for V3 arrays it is
-    /// synthesised by `makeV2Meta(from:)`.
-    private let _v2meta: V2ArrayMetadata
+    private let _fillValue: ZarrJSONValue?
 
     private let _shape: [Int]
     private let _chunkShape: [Int]
@@ -75,8 +63,7 @@ public struct ZarrArray: Sendable {
     private let _chunkKeyEncoding: ChunkKeyEncoding
     private let _arrayStride: [Int]
     private let _orderIsF: Bool
-    private let _resolvedCodecs: [ResolvedCodec]
-    private let _v3Codecs: [V3Codec]
+    private let _codecPipeline: CodecPipeline
     private let _concurrentLimit: Int
 
     public var ndim: Int { _shape.count }
@@ -104,31 +91,38 @@ public struct ZarrArray: Sendable {
         self.path = try normalizeZarrPath(path)
         self.metadata = metadata
 
-        let v2meta: V2ArrayMetadata
-        let codecs: [V3Codec]
+        let derived: DerivedArrayProperties
+        let pipeline: CodecPipeline
+        let dataType: ZarrDataType
         switch metadata {
         case .v2(let meta):
             version = .v2
-            v2meta = meta
-            codecs = meta.compressor.map { compressorDictToV3Codecs($0) } ?? []
+            dataType = try ZarrDataType.parse(meta.dtype)
+            pipeline = try CodecPipeline(v2: meta, dataType: dataType)
             _chunkKeyEncoding = .v2(separator: meta.dimensionSeparator ?? ".")
+            derived = Self.computeDerived(shape: meta.shape, chunkShape: meta.chunks, orderIsF: meta.order == .F)
+            _fillValue = meta.fillValue
         case .v3(let meta):
             version = .v3
-            v2meta = Self.makeV2Meta(from: meta)
-            codecs = meta.codecs ?? []
+            let parsed = try ZarrDataType.parseV3(meta.dataType)
+            pipeline = try CodecPipeline(v3: meta.codecs ?? [], dataType: parsed)
+            dataType = ZarrDataType(endian: pipeline.serializer.endian, kind: parsed.kind, size: parsed.size)
             _chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
+            derived = Self.computeDerived(
+                shape: meta.shape,
+                chunkShape: meta.chunkGrid.configuration.chunkShape,
+                orderIsF: false
+            )
+            _fillValue = meta.fillValue
         }
 
-        _v2meta = v2meta
-        let derived = try Self.computeDerived(from: v2meta)
-        dataType = derived.dataType
+        self.dataType = dataType
         _shape = derived.shape
         _chunkShape = derived.chunkShape
         _numChunks = derived.numChunks
         _arrayStride = derived.arrayStride
         _orderIsF = derived.orderIsF
-        _resolvedCodecs = try Self.resolveCodecs(codecs, elementSize: derived.dataType.elementSize)
-        _v3Codecs = codecs
+        _codecPipeline = pipeline
         _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
     }
 
@@ -147,54 +141,13 @@ public struct ZarrArray: Sendable {
         try self.init(metadata: v3Metadata, storage: storage, path: path)
     }
 
-    /// Build a V2ArrayMetadata view of a V3ArrayMetadata, used internally during init.
-    private static func makeV2Meta(from v3: V3ArrayMetadata) -> V2ArrayMetadata {
-        V2ArrayMetadata(
-            zarrFormat: 2,
-            shape: v3.shape,
-            chunks: v3.chunkGrid.configuration.chunkShape,
-            dtype: v3.dataType,
-            compressor: v3CodecsToV2Compressor(v3.codecs),
-            fillValue: v3.fillValue,
-            order: .C,
-            filters: nil,
-            dimensionSeparator: v3.chunkKeyEncoding?.configuration?.separator ?? "/"
-        )
-    }
-
-    private static func resolveCodecs(_ codecs: [V3Codec], elementSize: Int) throws -> [ResolvedCodec] {
-        try codecs.map { codec in
-            let name = codec.shortName
-            switch name {
-            case "none", "bytes", "endian":
-                return .none
-            case "gzip":
-                return .gzip
-            case "zlib":
-                return .zlib
-            case "bz2":
-                let level = codec.configuration?["level"]?.intValue ?? 5
-                return .bz2(level: level)
-            case "lz4":
-                return .lz4
-            case "blosc":
-                let cname = codec.configuration?["cname"]?.stringValue ?? "lz4"
-                let clevel = CInt(codec.configuration?["clevel"]?.intValue ?? 5)
-                let shuffle = CInt(codec.configuration?["shuffle"]?.intValue ?? 1)
-                let typesize = codec.configuration?["typesize"]?.intValue ?? elementSize
-                return .blosc(cname: cname, clevel: clevel, shuffle: shuffle, typesize: typesize)
-            default:
-                throw ZarrArrayError.unsupportedCompressor(name)
-            }
-        }
-    }
-
     private static func computeDerived(
-        from meta: V2ArrayMetadata
-    ) throws -> DerivedArrayProperties {
-        let parsed = try ZarrDataType.parse(meta.dtype)
-        let s = meta.shape.map(Int.init)
-        let c = meta.chunks.map(Int.init)
+        shape: [UInt64],
+        chunkShape: [UInt64],
+        orderIsF: Bool
+    ) -> DerivedArrayProperties {
+        let s = shape.map(Int.init)
+        let c = chunkShape.map(Int.init)
         let ndim = s.count
         let numChunks = (0..<ndim).map { d in (s[d] + c[d] - 1) / c[d] }
         var stride = [Int](repeating: 1, count: ndim)
@@ -203,9 +156,7 @@ public struct ZarrArray: Sendable {
                 stride[d] = stride[d + 1] * s[d + 1]
             }
         }
-        let orderIsF = meta.order == .F
         return DerivedArrayProperties(
-            dataType: parsed,
             shape: s,
             chunkShape: c,
             numChunks: numChunks,
@@ -256,7 +207,7 @@ public struct ZarrArray: Sendable {
         let key = zarrKey(path, chunkKey(indices))
         guard try await storage.exists(path: key) else { return nil }
         let raw = try await storage.read(path: key)
-        let data = try decompress(raw)
+        let data = try _codecPipeline.decode(raw)
         return try T.decode(data, endian: dataType.endian)
     }
 
@@ -431,7 +382,7 @@ public struct ZarrArray: Sendable {
         let key = zarrKey(path, chunkKey(indices))
         if try await storage.exists(path: key) {
             let raw = try await storage.read(path: key)
-            return try decompress(raw)
+            return try _codecPipeline.decode(raw)
         } else {
             return try fillValueData(for: indices)
         }
@@ -557,28 +508,12 @@ public struct ZarrArray: Sendable {
     /// Write the array metadata to storage (`.zarray` for V2, `zarr.json` for V3).
     public func storeMetadata() async throws {
         let encoder = JSONEncoder()
-        switch version {
-        case .v2:
-            let data = try encoder.encode(_v2meta)
+        switch metadata {
+        case .v2(let meta):
+            let data = try encoder.encode(meta)
             try await storage.write(path: zarrKey(path, ".zarray"), data: data)
-        case .v3:
-            let v3meta = V3ArrayMetadata(
-                zarrFormat: 3,
-                nodeType: "array",
-                shape: _v2meta.shape,
-                dataType: _v2meta.dtype,
-                chunkGrid: .init(
-                    name: "regular",
-                    configuration: .init(chunkShape: _v2meta.chunks)
-                ),
-                chunkKeyEncoding: _chunkKeyEncoding.v3Metadata,
-                fillValue: _v2meta.fillValue,
-                codecs: _v3Codecs.isEmpty ? nil : _v3Codecs,
-                storageTransformers: nil,
-                dimensionNames: nil,
-                attributes: nil
-            )
-            let data = try encoder.encode(v3meta)
+        case .v3(let meta):
+            let data = try encoder.encode(meta)
             try await storage.write(path: zarrKey(path, "zarr.json"), data: data)
         }
     }
@@ -591,7 +526,7 @@ public struct ZarrArray: Sendable {
         guard data.count == expectedSize else {
             throw ZarrArrayError.invalidDataSize(expected: expectedSize, got: data.count)
         }
-        let encoded = try encode(data)
+        let encoded = try _codecPipeline.encode(data)
         let key = zarrKey(path, chunkKey(indices))
         try await storage.write(path: key, data: encoded)
     }
@@ -604,48 +539,6 @@ public struct ZarrArray: Sendable {
     }
 
     // MARK: - Private helpers
-
-    private func decompress(_ data: Data) throws -> Data {
-        var result = data
-        for codec in _resolvedCodecs.reversed() {
-            result = try applyResolvedCodec(codec, data: result, direction: .decode)
-        }
-        return result
-    }
-
-    private func encode(_ data: Data) throws -> Data {
-        var result = data
-        for codec in _resolvedCodecs {
-            result = try applyResolvedCodec(codec, data: result, direction: .encode)
-        }
-        return result
-    }
-
-    private enum CodecDirection {
-        case encode, decode
-    }
-
-    private func applyResolvedCodec(_ codec: ResolvedCodec, data: Data, direction: CodecDirection) throws -> Data {
-        switch codec {
-        case .none:
-            return data
-        case .gzip:
-            let c = GzipCodec()
-            return direction == .encode ? try c.encode(data) : try c.decode(data)
-        case .zlib:
-            let c = ZlibCodec()
-            return direction == .encode ? try c.encode(data) : try c.decode(data)
-        case .bz2(let level):
-            let c = BZip2Codec(level: level)
-            return direction == .encode ? try c.encode(data) : try c.decode(data)
-        case .lz4:
-            let c = LZ4Codec()
-            return direction == .encode ? try c.encode(data) : try c.decode(data)
-        case .blosc(let cname, let clevel, let shuffle, let typesize):
-            let c = BloscCodec(clevel: clevel, shuffle: shuffle, typesize: typesize, compressorName: cname)
-            return direction == .encode ? try c.encode(data) : try c.decode(data)
-        }
-    }
 
     private func fillValueData(for indices: [Int]) throws -> Data {
         let chunkSize = try chunkSize(indices)
@@ -675,7 +568,7 @@ public struct ZarrArray: Sendable {
     }
 
     private func fillValueAsData() -> Data? {
-        guard let fillValue = _v2meta.fillValue else { return nil }
+        guard let fillValue = _fillValue else { return nil }
         let size = dataType.elementSize
 
         switch fillValue {

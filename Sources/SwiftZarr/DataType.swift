@@ -45,6 +45,30 @@ public struct ZarrDataType: Sendable, Equatable {
 }
 
 extension ZarrDataType {
+    /// Map V3 numeric names to the fixed-width types used by the reader.
+    internal static func parseV3(_ name: String) throws -> ZarrDataType {
+        let kind: Kind
+        let size: Int
+        switch name {
+        case "bool": (kind, size) = (.bool, 1)
+        case "int8": (kind, size) = (.int, 1)
+        case "int16": (kind, size) = (.int, 2)
+        case "int32": (kind, size) = (.int, 4)
+        case "int64": (kind, size) = (.int, 8)
+        case "uint8": (kind, size) = (.uint, 1)
+        case "uint16": (kind, size) = (.uint, 2)
+        case "uint32": (kind, size) = (.uint, 4)
+        case "uint64": (kind, size) = (.uint, 8)
+        case "float16": (kind, size) = (.float, 2)
+        case "float32": (kind, size) = (.float, 4)
+        case "float64": (kind, size) = (.float, 8)
+        case "complex64": (kind, size) = (.complex, 8)
+        case "complex128": (kind, size) = (.complex, 16)
+        default: throw ZarrDataTypeError.invalidDtype(name)
+        }
+        return ZarrDataType(endian: size == 1 ? .none : .little, kind: kind, size: size)
+    }
+
     public func data<T>(from value: T) -> Data {
         var v = value
         let native = withUnsafeBytes(of: &v) { Data($0) }

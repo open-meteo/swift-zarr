@@ -25,12 +25,4 @@ internal enum ChunkKeyEncoding: Sendable {
         }
     }
 
-    var v3Metadata: V3ArrayMetadata.ChunkKeyEncoding {
-        switch self {
-        case .default(let separator):
-            return .init(name: "default", configuration: .init(separator: separator))
-        case .v2(let separator):
-            return .init(name: "v2", configuration: .init(separator: separator))
-        }
-    }
 }

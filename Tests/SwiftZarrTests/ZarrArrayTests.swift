@@ -449,11 +449,11 @@ func testV3SeparatorDot() async throws {
         zarrFormat: 3,
         nodeType: "array",
         shape: shape,
-        dataType: "<i4",
+        dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
         chunkKeyEncoding: .init(name: "default", configuration: .init(separator: ".")),
         fillValue: nil,
-        codecs: nil,
+        codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
         storageTransformers: nil,
         dimensionNames: nil,
         attributes: nil
@@ -1201,11 +1201,11 @@ func testV3ArrayWriteRead() async throws {
         zarrFormat: 3,
         nodeType: "array",
         shape: shape,
-        dataType: "<i4",
+        dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
         chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
         fillValue: nil,
-        codecs: nil,
+        codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
         storageTransformers: nil,
         dimensionNames: nil,
         attributes: nil
@@ -1296,11 +1296,11 @@ func testV3NestedGroups() async throws {
             zarrFormat: 3,
             nodeType: "array",
             shape: shape,
-            dataType: "<i4",
+            dataType: "int32",
             chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
             chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
             fillValue: nil,
-            codecs: nil,
+            codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
             storageTransformers: nil,
             dimensionNames: nil,
             attributes: nil
@@ -1350,11 +1350,11 @@ func testV3NestedGroupChildClassification() async throws {
             zarrFormat: 3,
             nodeType: "array",
             shape: [4],
-            dataType: "<i4",
+            dataType: "int32",
             chunkGrid: .init(name: "regular", configuration: .init(chunkShape: [4])),
             chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
             fillValue: nil,
-            codecs: nil,
+            codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
             storageTransformers: nil,
             dimensionNames: nil,
             attributes: nil
@@ -1389,12 +1389,15 @@ func testV3CompressorRoundtrip() async throws {
     let data = int32LERange(24)
     let shape: [UInt64] = [4, 6]
     let chunkShape: [UInt64] = [2, 3]
-    let codecs = [V3Codec(name: "gzip", configuration: ["level": .int(5)])]
+    let codecs = [
+        V3Codec(name: "bytes", configuration: ["endian": .string("little")]),
+        V3Codec(name: "gzip", configuration: ["level": .int(5)]),
+    ]
     let v3meta = V3ArrayMetadata(
         zarrFormat: 3,
         nodeType: "array",
         shape: shape,
-        dataType: "<i4",
+        dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
         chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
         fillValue: nil,
