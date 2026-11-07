@@ -2,6 +2,7 @@ import Foundation
 
 public enum ZarrGroupError: Error, Sendable {
     case unrecognisedChild(String)
+    case invalidMetadata(String)
 }
 
 public enum ZarrGroupChild: Sendable, Equatable {
@@ -75,11 +76,15 @@ public struct ZarrGroup: Sendable {
         self.storage = storage
         self.path = try normalizeZarrPath(path)
         switch metadata {
-        case .v2:
+        case .v2(let meta):
+            guard meta.zarrFormat == 2 else { throw ZarrGroupError.invalidMetadata("expected zarr_format 2") }
             version = .v2
             attributes = [:]
             metadataTemplate = metadata
         case .v3(var meta):
+            guard meta.zarrFormat == 3, meta.nodeType == "group" else {
+                throw ZarrGroupError.invalidMetadata("expected a V3 group")
+            }
             version = .v3
             attributes = meta.attributes ?? [:]
             // Keep one editable attribute dictionary, without a retained duplicate.
