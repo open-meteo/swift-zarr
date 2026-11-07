@@ -50,6 +50,7 @@ public struct ZarrArray: Sendable {
     public let version: ZarrVersion
     public let shape: [Int]
     public let chunkShape: [Int]
+    public let totalElements: Int
 
     private let encodedFillValue: Data
     private let numChunks: [Int]
@@ -129,13 +130,16 @@ public struct ZarrArray: Sendable {
             throw ZarrArrayError.invalidMetadata("chunk dimensions must be positive and match the array rank")
         }
         // totalElements is an Int, but a subset's byte count is checked when requested.
-        if !shape.contains(0) {
+        if shape.contains(0) {
+            totalElements = 0
+        } else {
             var elements = 1
             for size in shape {
                 let (product, overflow) = elements.multipliedReportingOverflow(by: size)
                 guard !overflow else { throw ZarrArrayError.invalidMetadata("array element count overflows Int") }
                 elements = product
             }
+            totalElements = elements
         }
         numChunks = zip(shape, chunkShape).map { size, chunk in size / chunk + (size % chunk == 0 ? 0 : 1) }
         var chunkStride = [Int](repeating: 1, count: chunkShape.count)
@@ -183,10 +187,6 @@ public struct ZarrArray: Sendable {
 
     /// Number of chunks per dimension (the chunk grid shape).
     public func chunkGridShape() -> [Int] { numChunks }
-
-    public var totalElements: Int {
-        shape.contains(0) ? 0 : shape.reduce(1, *)
-    }
 
     /// Shape of the chunk intersection with array bounds. Stored chunks always use `chunkShape`.
     public func chunkSize(_ indices: [Int]) throws -> [Int] {
