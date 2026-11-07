@@ -1667,8 +1667,8 @@ func testEmptyShapeArray() async throws {
 
 // MARK: - Type-mismatch error
 
-@Test
-func testTypeMismatchError() async throws {
+@Test(arguments: [false, true])
+func testTypeMismatchError(stored: Bool) async throws {
     let tmp = try createTempDir()
     defer { try? FileManager.default.removeItem(atPath: tmp) }
 
@@ -1685,13 +1685,24 @@ func testTypeMismatchError() async throws {
     )
     let storage = LocalFileStorage(basePath: tmp)
     let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
-    try await array.storeMetadata()
-    try await storeAllChunks(array: array, data: int32LERange(4))
-
-    // Reading as Float (f4) should throw typeMismatch.
-    await #expect(throws: ZarrElementError.self) {
-        let _: [Float] = try await array.retrieveArraySubset([0..<4])
+    if stored {
+        try await storeAllChunks(array: array, data: int32LERange(4))
     }
+
+    func check<T: ZarrElement>(_ type: T.Type) async {
+        await #expect(throws: ZarrElementError.self) {
+            let _: [T] = try await array.retrieveArraySubset([0..<4])
+        }
+        await #expect(throws: ZarrElementError.self) {
+            let _: [T] = try await array.retrieveChunk([0])
+        }
+        await #expect(throws: ZarrElementError.self) {
+            let _: [T]? = try await array.retrieveChunkIfExists([0])
+        }
+    }
+    await check(Float.self)  // Same width, different kind.
+    await check(Int16.self)  // Same kind, different width.
+    await check(UInt8.self)  // Different kind and width.
 }
 
 // MARK: - Out-of-bounds slice

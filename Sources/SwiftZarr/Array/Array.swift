@@ -174,12 +174,14 @@ public struct ZarrArray: Sendable {
     /// Retrieve a full stored chunk, including edge padding, in the declared array order.
     /// If the chunk file does not exist, returns the fill value.
     public func retrieveChunk<T: ZarrElement>(_ indices: [Int]) async throws -> [T] {
+        try validateElementType(T.self)
         let data = try await readChunkRaw(indices)
         return try T.decode(data, endian: dataType.endian)
     }
 
     /// Retrieve and decode a single chunk, returning `nil` if the chunk file does not exist.
     public func retrieveChunkIfExists<T: ZarrElement>(_ indices: [Int]) async throws -> [T]? {
+        try validateElementType(T.self)
         try validateIndices(indices)
         let key = zarrKey(path, chunkKey(indices))
         guard try await storage.exists(path: key) else { return nil }
@@ -190,6 +192,16 @@ public struct ZarrArray: Sendable {
 
     /// Retrieve a sub-region of the array (slice read), crossing chunk boundaries as needed.
     public func retrieveArraySubset<T: ZarrElement>(_ ranges: [Range<Int>]) async throws -> [T] {
+        try validateElementType(T.self)
+        if let nativeType = T.self as? any NativeZarrElement.Type {
+            // Opening the metatype preserves T; this cast does not reinterpret memory.
+            return try await retrieveNativeSubset(nativeType, ranges: ranges) as! [T]
+        }
+        let bytes = try await assembleSubset(ranges)
+        return bytes.isEmpty ? [] : try T.decode(bytes, endian: dataType.endian)
+    }
+
+    private func validateElementType<T: ZarrElement>(_ type: T.Type) throws {
         guard dataType.matches(type: T.self) else {
             throw ZarrElementError.typeMismatch(
                 expected: T.zarrDtypeKind,
@@ -197,12 +209,6 @@ public struct ZarrArray: Sendable {
                 actual: dataType
             )
         }
-        if let nativeType = T.self as? any NativeZarrElement.Type {
-            // Opening the metatype preserves T; this cast does not reinterpret memory.
-            return try await retrieveNativeSubset(nativeType, ranges: ranges) as! [T]
-        }
-        let bytes = try await assembleSubset(ranges)
-        return bytes.isEmpty ? [] : try T.decode(bytes, endian: dataType.endian)
     }
 
     private func retrieveNativeSubset<T: NativeZarrElement>(
