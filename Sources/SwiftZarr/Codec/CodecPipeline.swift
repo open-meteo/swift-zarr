@@ -89,11 +89,7 @@ internal struct CodecPipeline: Sendable {
             } else {
                 blockSize = 0
             }
-            do {
-                try BloscCodec.validateBlockSize(blockSize)
-            } catch {
-                throw ZarrArrayError.invalidCodecConfiguration("blosc: blocksize must be in 0...Int32.max")
-            }
+            try BloscCodec.validateBlockSize(blockSize)
             return BloscCodec(
                 clevel: clevel,
                 shuffle: shuffle,

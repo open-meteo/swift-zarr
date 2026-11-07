@@ -53,7 +53,7 @@ func testBloscRejectsInvalidBlockSize(blockSize: Int) throws {
     #expect(throws: BloscError.self) {
         try BloscCodec(blockSize: blockSize).encode(Data(repeating: 7, count: 4096))
     }
-    #expect(throws: ZarrArrayError.self) {
+    #expect(throws: BloscError.self) {
         try CodecPipeline(
             v3: [
                 .init(name: "bytes", configuration: ["endian": .string("little")]),
