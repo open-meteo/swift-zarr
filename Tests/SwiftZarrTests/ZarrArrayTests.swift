@@ -25,7 +25,7 @@ func extractChunk(
     var actualChunkShape = [Int](repeating: 0, count: ndim)
     for d in 0..<ndim {
         chunkStart[d] = chunkIndices[d] * chunkShape[d]
-        actualChunkShape[d] = min(chunkShape[d], arrayShape[d] - chunkStart[d])
+        actualChunkShape[d] = chunkShape[d]
     }
     let chunkElements = actualChunkShape.reduce(1, *)
     var chunkData = Data(count: chunkElements * elementSize)
@@ -47,12 +47,15 @@ func extractChunk(
     for localFlat in 0..<chunkElements {
         var remaining = localFlat
         var globalFlat = 0
+        var inBounds = true
         for d in 0..<ndim {
             let localCoord = remaining / chunkStride[d]
             remaining %= chunkStride[d]
             let globalCoord = chunkStart[d] + localCoord
+            if globalCoord >= arrayShape[d] { inBounds = false }
             globalFlat += globalCoord * arrayStride[d]
         }
+        if !inBounds { continue }
         let srcOff = globalFlat * elementSize
         let dstOff = localFlat * elementSize
         chunkData[dstOff..<dstOff + elementSize] = flatData[srcOff..<srcOff + elementSize]
@@ -274,7 +277,7 @@ func test1DArrayMultipleChunks() async throws {
     #expect(chunk0.count == 3 * 4)
     #expect(chunk0[0..<4] == data[0..<4])
     let chunk3 = try await array.readChunkRaw([3])
-    #expect(chunk3.count == 1 * 4)
+    #expect(chunk3.count == 3 * 4)
     let readData = try await array.readRaw()
     #expect(readData == data)
 }
@@ -502,7 +505,7 @@ func testPartialEdgeChunks() async throws {
 
     #expect(array.chunkGridShape() == [2, 2])
     let chunk11 = try await array.readChunkRaw([1, 1])
-    #expect(chunk11.count == 2 * 4)
+    #expect(chunk11.count == 2 * 3 * 4)
     let readData = try await array.readRaw()
     #expect(readData == data)
 }
@@ -1580,22 +1583,19 @@ func testFOrderEdgeChunk() async throws {
         for i in 0..<2 { var v = Int32(i * 5 + j).littleEndian; withUnsafeBytes(of: &v) { f00.append(contentsOf: $0) } }
     }
     try await array.storeChunk([0, 0], data: f00)
-    // Chunk [0,1]: rows 0-1, cols 3-4 → [[3,4],[8,9]] → F: [3,8,4,9]
-    var f01 = Data(capacity: 16)
-    for j in 0..<2 {
-        for i in 0..<2 {
-            var v = Int32(i * 5 + j + 3).littleEndian; withUnsafeBytes(of: &v) { f01.append(contentsOf: $0) }
+    // Nominal 2x3 chunks in F order; -1 marks out-of-array padding.
+    for (indices, values) in [
+        ([0, 1], [3, 8, 4, 9, -1, -1]),
+        ([1, 0], [10, -1, 11, -1, 12, -1]),
+        ([1, 1], [13, -1, 14, -1, -1, -1]),
+    ] {
+        var bytes = Data()
+        for value in values {
+            var v = Int32(value).littleEndian
+            withUnsafeBytes(of: &v) { bytes.append(contentsOf: $0) }
         }
+        try await array.storeChunk(indices, data: bytes)
     }
-    try await array.storeChunk([0, 1], data: f01)
-    // Chunk [1,0]: rows 2-2, cols 0-2 → [[10,11,12]] → F order same as C (1D first dim)
-    var f10 = Data(capacity: 12)
-    for j in 0..<3 { var v = Int32(10 + j).littleEndian; withUnsafeBytes(of: &v) { f10.append(contentsOf: $0) } }
-    try await array.storeChunk([1, 0], data: f10)
-    // Chunk [1,1]: rows 2-2, cols 3-4 → [[13,14]] → F order same as C
-    var f11 = Data(capacity: 8)
-    for j in 0..<2 { var v = Int32(13 + j).littleEndian; withUnsafeBytes(of: &v) { f11.append(contentsOf: $0) } }
-    try await array.storeChunk([1, 1], data: f11)
 
     #expect(try await array.readRaw() == int32LERange(15))
 }

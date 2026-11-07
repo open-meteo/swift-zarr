@@ -55,22 +55,19 @@ public struct ZarrArray: Sendable {
     public let metadata: ZarrArrayMetadata
     public let dataType: ZarrDataType
     public let version: ZarrVersion
+    public let shape: [Int]
+    public let chunkShape: [Int]
 
-    private let _fillValue: ZarrJSONValue?
+    private let fillValue: ZarrJSONValue?
+    private let numChunks: [Int]
+    private let chunkKeyEncoding: ChunkKeyEncoding
+    private let arrayStride: [Int]
+    private let orderIsF: Bool
+    private let codecPipeline: CodecPipeline
+    private let concurrentLimit: Int
 
-    private let _shape: [Int]
-    private let _chunkShape: [Int]
-    private let _numChunks: [Int]
-    private let _chunkKeyEncoding: ChunkKeyEncoding
-    private let _arrayStride: [Int]
-    private let _orderIsF: Bool
-    private let _codecPipeline: CodecPipeline
-    private let _concurrentLimit: Int
-
-    public var ndim: Int { _shape.count }
+    public var ndim: Int { shape.count }
     public var elementSize: Int { dataType.elementSize }
-    public var shape: [Int] { _shape }
-    public var chunkShape: [Int] { _chunkShape }
 
     public init(storage: any Storage, path: String) async throws {
         let normalizedPath = try normalizeZarrPath(path)
@@ -100,31 +97,31 @@ public struct ZarrArray: Sendable {
             version = .v2
             dataType = try ZarrDataType.parse(meta.dtype)
             pipeline = try CodecPipeline(v2: meta, dataType: dataType)
-            _chunkKeyEncoding = .v2(separator: meta.dimensionSeparator ?? ".")
+            chunkKeyEncoding = .v2(separator: meta.dimensionSeparator ?? ".")
             derived = Self.computeDerived(shape: meta.shape, chunkShape: meta.chunks, orderIsF: meta.order == .F)
-            _fillValue = meta.fillValue
+            fillValue = meta.fillValue
         case .v3(let meta):
             version = .v3
             let parsed = try ZarrDataType.parseV3(meta.dataType)
             pipeline = try CodecPipeline(v3: meta.codecs ?? [], dataType: parsed)
             dataType = ZarrDataType(endian: pipeline.serializer.endian, kind: parsed.kind, size: parsed.size)
-            _chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
+            chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
             derived = Self.computeDerived(
                 shape: meta.shape,
                 chunkShape: meta.chunkGrid.configuration.chunkShape,
                 orderIsF: false
             )
-            _fillValue = meta.fillValue
+            fillValue = meta.fillValue
         }
 
         self.dataType = dataType
-        _shape = derived.shape
-        _chunkShape = derived.chunkShape
-        _numChunks = derived.numChunks
-        _arrayStride = derived.arrayStride
-        _orderIsF = derived.orderIsF
-        _codecPipeline = pipeline
-        _concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
+        shape = derived.shape
+        chunkShape = derived.chunkShape
+        numChunks = derived.numChunks
+        arrayStride = derived.arrayStride
+        orderIsF = derived.orderIsF
+        codecPipeline = pipeline
+        concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
     }
 
     /// Create an array from in-memory V2 metadata without reading from storage.
@@ -167,19 +164,19 @@ public struct ZarrArray: Sendable {
     }
 
     /// Number of chunks per dimension (the chunk grid shape).
-    public func chunkGridShape() -> [Int] { _numChunks }
+    public func chunkGridShape() -> [Int] { numChunks }
 
     public var totalElements: Int {
-        _shape.reduce(1, *)
+        shape.reduce(1, *)
     }
 
-    /// Actual size of a specific chunk (edge chunks may be smaller than the nominal chunk shape).
+    /// Shape of the chunk intersection with array bounds. Stored chunks always use `chunkShape`.
     public func chunkSize(_ indices: [Int]) throws -> [Int] {
         guard indices.count == ndim else {
             throw ZarrArrayError.mismatchedDimensions(expected: ndim, got: indices.count)
         }
-        let c = _chunkShape
-        let s = _shape
+        let c = chunkShape
+        let s = shape
         return (0..<ndim).map { d in
             let start = indices[d] * c[d]
             return min(c[d], s[d] - start)
@@ -190,12 +187,12 @@ public struct ZarrArray: Sendable {
     /// V2 encoding uses separator-joined indices, or "0" for a scalar.
     /// V3 default encoding prefixes indices with "c", or uses "c" for a scalar.
     public func chunkKey(_ indices: [Int]) -> String {
-        _chunkKeyEncoding.key(indices)
+        chunkKeyEncoding.key(indices)
     }
 
     // MARK: - Typed reads
 
-    /// Retrieve and decode a single chunk.
+    /// Retrieve a full stored chunk, including edge padding, in the declared array order.
     /// If the chunk file does not exist, returns the fill value.
     public func retrieveChunk<T: ZarrElement>(_ indices: [Int]) async throws -> [T] {
         let data = try await readChunkRaw(indices)
@@ -208,7 +205,7 @@ public struct ZarrArray: Sendable {
         let key = zarrKey(path, chunkKey(indices))
         guard try await storage.exists(path: key) else { return nil }
         let raw = try await storage.read(path: key)
-        let data = try _codecPipeline.decode(raw)
+        let data = try decodeChunk(raw)
         return try T.decode(data, endian: dataType.endian)
     }
 
@@ -225,9 +222,9 @@ public struct ZarrArray: Sendable {
             throw ZarrArrayError.mismatchedDimensions(expected: ndim, got: ranges.count)
         }
         for d in 0..<ndim {
-            guard ranges[d].lowerBound >= 0 && ranges[d].upperBound <= _shape[d] else {
+            guard ranges[d].lowerBound >= 0 && ranges[d].upperBound <= shape[d] else {
                 throw ZarrArrayError.invalidSlice(
-                    "range \(ranges[d]) out of bounds for dimension \(d) (size \(_shape[d]))"
+                    "range \(ranges[d]) out of bounds for dimension \(d) (size \(shape[d]))"
                 )
             }
         }
@@ -255,8 +252,8 @@ public struct ZarrArray: Sendable {
         var firstChunk = [Int](repeating: 0, count: ndim)
         var lastChunk = [Int](repeating: 0, count: ndim)
         for d in 0..<ndim {
-            firstChunk[d] = ranges[d].lowerBound / _chunkShape[d]
-            lastChunk[d] = (ranges[d].upperBound - 1) / _chunkShape[d]
+            firstChunk[d] = ranges[d].lowerBound / chunkShape[d]
+            lastChunk[d] = (ranges[d].upperBound - 1) / chunkShape[d]
         }
 
         let chunkRanges = (0..<ndim).map { d in firstChunk[d]...lastChunk[d] }
@@ -266,15 +263,14 @@ public struct ZarrArray: Sendable {
         if intersectingChunks.count == 1 {
             let idx = intersectingChunks[0]
             let chunkData = try await readChunkRaw(idx)
-            let chunkOrigin = (0..<ndim).map { idx[$0] * _chunkShape[$0] }
-            let actualChunkSize = try chunkSize(idx)
+            let chunkOrigin = (0..<ndim).map { idx[$0] * chunkShape[$0] }
 
             // If the request covers the entire chunk exactly, decode directly.
             let fullCoverage = (0..<ndim).allSatisfy {
                 ranges[$0].lowerBound == chunkOrigin[$0]
-                    && ranges[$0].upperBound == chunkOrigin[$0] + actualChunkSize[$0]
+                    && ranges[$0].upperBound == chunkOrigin[$0] + chunkShape[$0]
             }
-            if fullCoverage {
+            if fullCoverage && (!orderIsF || ndim <= 1) {
                 return try T.decode(chunkData, endian: dataType.endian)
             }
 
@@ -286,18 +282,18 @@ public struct ZarrArray: Sendable {
             var localCount = [Int](repeating: 0, count: ndim)
             for d in 0..<ndim {
                 localStart[d] = max(ranges[d].lowerBound - chunkOrigin[d], 0)
-                localEnd[d] = min(ranges[d].upperBound - chunkOrigin[d], actualChunkSize[d])
+                localEnd[d] = min(ranges[d].upperBound - chunkOrigin[d], chunkShape[d])
                 localCount[d] = localEnd[d] - localStart[d]
                 outputStart[d] = chunkOrigin[d] + localStart[d] - ranges[d].lowerBound
             }
             var chunkLocalStride = [Int](repeating: 1, count: ndim)
-            if _orderIsF {
+            if orderIsF {
                 for d in 1..<ndim {
-                    chunkLocalStride[d] = chunkLocalStride[d - 1] * actualChunkSize[d - 1]
+                    chunkLocalStride[d] = chunkLocalStride[d - 1] * chunkShape[d - 1]
                 }
             } else {
                 for d in (0..<ndim - 1).reversed() {
-                    chunkLocalStride[d] = chunkLocalStride[d + 1] * actualChunkSize[d + 1]
+                    chunkLocalStride[d] = chunkLocalStride[d + 1] * chunkShape[d + 1]
                 }
             }
             copyChunkSlice(
@@ -316,8 +312,8 @@ public struct ZarrArray: Sendable {
 
         var output = Data(count: outputElements * elementSize)
 
-        for batchStart in stride(from: 0, to: intersectingChunks.count, by: _concurrentLimit) {
-            let batchEnd = min(batchStart + _concurrentLimit, intersectingChunks.count)
+        for batchStart in stride(from: 0, to: intersectingChunks.count, by: concurrentLimit) {
+            let batchEnd = min(batchStart + concurrentLimit, intersectingChunks.count)
 
             try await withThrowingTaskGroup(
                 of: (indices: [Int], data: Data).self
@@ -331,8 +327,7 @@ public struct ZarrArray: Sendable {
                 }
 
                 for try await (indices, chunkData) in group {
-                    let chunkOrigin = (0..<ndim).map { indices[$0] * _chunkShape[$0] }
-                    let actualChunkSize = try chunkSize(indices)
+                    let chunkOrigin = (0..<ndim).map { indices[$0] * chunkShape[$0] }
 
                     var localStart = [Int](repeating: 0, count: ndim)
                     var localEnd = [Int](repeating: 0, count: ndim)
@@ -340,19 +335,19 @@ public struct ZarrArray: Sendable {
                     var localCount = [Int](repeating: 0, count: ndim)
                     for d in 0..<ndim {
                         localStart[d] = max(ranges[d].lowerBound - chunkOrigin[d], 0)
-                        localEnd[d] = min(ranges[d].upperBound - chunkOrigin[d], actualChunkSize[d])
+                        localEnd[d] = min(ranges[d].upperBound - chunkOrigin[d], chunkShape[d])
                         localCount[d] = localEnd[d] - localStart[d]
                         outputStart[d] = chunkOrigin[d] + localStart[d] - ranges[d].lowerBound
                     }
 
                     var chunkLocalStride = [Int](repeating: 1, count: ndim)
-                    if _orderIsF {
+                    if orderIsF {
                         for d in 1..<ndim {
-                            chunkLocalStride[d] = chunkLocalStride[d - 1] * actualChunkSize[d - 1]
+                            chunkLocalStride[d] = chunkLocalStride[d - 1] * chunkShape[d - 1]
                         }
                     } else {
                         for d in (0..<ndim - 1).reversed() {
-                            chunkLocalStride[d] = chunkLocalStride[d + 1] * actualChunkSize[d + 1]
+                            chunkLocalStride[d] = chunkLocalStride[d + 1] * chunkShape[d + 1]
                         }
                     }
 
@@ -383,114 +378,64 @@ public struct ZarrArray: Sendable {
         let key = zarrKey(path, chunkKey(indices))
         if try await storage.exists(path: key) {
             let raw = try await storage.read(path: key)
-            return try _codecPipeline.decode(raw)
+            return try decodeChunk(raw)
         } else {
             return try fillValueData(for: indices)
         }
     }
 
-    /// Read the full array (all chunks) returning raw decoded bytes in row-major order.
+    /// Read the full array, clipping stored chunks to the array bounds.
     internal func readRaw() async throws -> Data {
-        let totalBytes = totalElements * dataType.elementSize
-        let allChunks = collectAllChunkIndices()
-        let ndim = self.ndim
-        let arrayShape = _shape
-        let nominalChunkShape = _chunkShape
-        let arrayStride = _arrayStride
-        let elementSize = dataType.elementSize
-
-        // Allocate without zero-initialization: every byte is written during chunk assembly.
-        let rawPtr = UnsafeMutableRawPointer.allocate(byteCount: totalBytes, alignment: MemoryLayout<UInt64>.alignment)
-
-        do {
-            for batchStart in stride(from: 0, to: allChunks.count, by: _concurrentLimit) {
-                let batchEnd = min(batchStart + _concurrentLimit, allChunks.count)
-
-                try await withThrowingTaskGroup(
-                    of: (indices: [Int], data: Data).self
-                ) { group in
-                    for i in batchStart..<batchEnd {
-                        let indices = allChunks[i]
-                        group.addTask {
-                            let data = try await self.readChunkRaw(indices)
-                            return (indices, data)
-                        }
-                    }
-
-                    for try await (indices, chunkData) in group {
-                        let chunkStart = (0..<ndim).map { indices[$0] * nominalChunkShape[$0] }
-                        let actualChunkSize = try self.chunkSize(indices)
-                        let innerSize = ndim > 0 ? actualChunkSize[ndim - 1] : 1
-
-                        chunkData.withUnsafeBytes { srcRaw in
-                            guard let srcPtr = srcRaw.baseAddress else { return }
-
-                            if ndim > 1 && actualChunkSize[ndim - 1] == arrayShape[ndim - 1] && !self._orderIsF {
-                                let outerElements = actualChunkSize[0..<ndim - 1].reduce(1, *)
-                                let innerByteCount = actualChunkSize[ndim - 1] * elementSize
-
-                                var outerStride = [Int](repeating: 1, count: ndim - 1)
-                                for d in (0..<ndim - 2).reversed() {
-                                    outerStride[d] = outerStride[d + 1] * actualChunkSize[d + 1]
-                                }
-
-                                var srcOffset = 0
-                                for outerFlat in 0..<outerElements {
-                                    var globalBase = 0
-                                    var tmp = outerFlat
-                                    for d in 0..<ndim - 1 {
-                                        let localCoord = tmp / outerStride[d]
-                                        tmp %= outerStride[d]
-                                        globalBase += (chunkStart[d] + localCoord) * arrayStride[d]
-                                    }
-                                    globalBase += chunkStart[ndim - 1] * arrayStride[ndim - 1]
-
-                                    rawPtr.advanced(by: globalBase * elementSize)
-                                        .copyMemory(from: srcPtr.advanced(by: srcOffset), byteCount: innerByteCount)
-                                    srcOffset += innerSize * elementSize
-                                }
-                            } else {
-                                let chunkElements = actualChunkSize.reduce(1, *)
-
-                                var cStride = [Int](repeating: 1, count: ndim)
-                                for d in (0..<ndim - 1).reversed() {
-                                    cStride[d] = cStride[d + 1] * actualChunkSize[d + 1]
-                                }
-
-                                for localFlat in 0..<chunkElements {
-                                    var globalFlat = 0
-                                    if self._orderIsF {
-                                        var remaining = localFlat
-                                        for d in 0..<ndim {
-                                            let localCoord = remaining % actualChunkSize[d]
-                                            remaining /= actualChunkSize[d]
-                                            globalFlat += (chunkStart[d] + localCoord) * arrayStride[d]
-                                        }
-                                    } else {
-                                        var pos = localFlat
-                                        for d in 0..<ndim {
-                                            let localCoord = pos / cStride[d]
-                                            pos %= cStride[d]
-                                            globalFlat += (chunkStart[d] + localCoord) * arrayStride[d]
-                                        }
-                                    }
-                                    rawPtr.advanced(by: globalFlat * elementSize)
-                                        .copyMemory(
-                                            from: srcPtr.advanced(by: localFlat * elementSize),
-                                            byteCount: elementSize
-                                        )
-                                }
-                            }
-                        }
-                    }
+        if ndim == 0 { return try await readChunkRaw([]) }
+        let byteCount = totalElements * elementSize
+        if byteCount == 0 { return Data() }
+        // Assembly fills every byte; avoid a redundant zero-initialization pass.
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: byteCount, alignment: MemoryLayout<UInt64>.alignment)
+        var output = Data(bytesNoCopy: buffer, count: byteCount, deallocator: .custom { ptr, _ in ptr.deallocate() })
+        var chunkStride = [Int](repeating: 1, count: ndim)
+        if orderIsF {
+            if ndim > 1 {
+                for d in 1..<ndim { chunkStride[d] = chunkStride[d - 1] * chunkShape[d - 1] }
+            }
+        } else if ndim > 1 {
+            for d in (0..<ndim - 1).reversed() { chunkStride[d] = chunkStride[d + 1] * chunkShape[d + 1] }
+        }
+        let chunks = collectAllChunkIndices()
+        for start in stride(from: 0, to: chunks.count, by: concurrentLimit) {
+            try await withThrowingTaskGroup(of: ([Int], Data).self) { group in
+                for i in start..<min(start + concurrentLimit, chunks.count) {
+                    let indices = chunks[i]
+                    group.addTask { (indices, try await self.readChunkRaw(indices)) }
+                }
+                for try await (indices, data) in group {
+                    copyChunkSlice(
+                        chunkData: data,
+                        into: &output,
+                        ndim: ndim,
+                        elementSize: elementSize,
+                        localCount: try chunkSize(indices),
+                        localStart: [Int](repeating: 0, count: ndim),
+                        outputStart: (0..<ndim).map { indices[$0] * chunkShape[$0] },
+                        outputStride: arrayStride,
+                        chunkLocalStride: chunkStride
+                    )
                 }
             }
-        } catch {
-            rawPtr.deallocate()
-            throw error
         }
+        return output
+    }
 
-        return Data(bytesNoCopy: rawPtr, count: totalBytes, deallocator: .custom { ptr, _ in ptr.deallocate() })
+    private func validateChunkSize(_ data: Data) throws {
+        let expected = chunkShape.reduce(elementSize, *)
+        guard data.count == expected else {
+            throw ZarrArrayError.invalidDataSize(expected: expected, got: data.count)
+        }
+    }
+
+    private func decodeChunk(_ raw: Data) throws -> Data {
+        let decoded = try codecPipeline.decode(raw)
+        try validateChunkSize(decoded)
+        return decoded
     }
 
     internal func validateIndices(_ indices: [Int]) throws {
@@ -498,7 +443,7 @@ public struct ZarrArray: Sendable {
             throw ZarrArrayError.mismatchedDimensions(expected: ndim, got: indices.count)
         }
         for d in 0..<ndim {
-            guard indices[d] >= 0 && indices[d] < _numChunks[d] else {
+            guard indices[d] >= 0 && indices[d] < numChunks[d] else {
                 throw ZarrArrayError.invalidChunkIndex(indices)
             }
         }
@@ -520,14 +465,11 @@ public struct ZarrArray: Sendable {
     }
 
     /// Encode and store a single chunk. `data` must contain exactly
-    /// `chunkSize * elementSize` bytes in row-major C order.
+    /// `chunkShape.product * elementSize` bytes, including edge padding, in the declared array order.
     public func storeChunk(_ indices: [Int], data: Data) async throws {
         try validateIndices(indices)
-        let expectedSize = try chunkSize(indices).reduce(1, *) * dataType.elementSize
-        guard data.count == expectedSize else {
-            throw ZarrArrayError.invalidDataSize(expected: expectedSize, got: data.count)
-        }
-        let encoded = try _codecPipeline.encode(data)
+        try validateChunkSize(data)
+        let encoded = try codecPipeline.encode(data)
         let key = zarrKey(path, chunkKey(indices))
         try await storage.write(path: key, data: encoded)
     }
@@ -542,11 +484,13 @@ public struct ZarrArray: Sendable {
     // MARK: - Private helpers
 
     private func fillValueData(for indices: [Int]) throws -> Data {
-        let chunkSize = try chunkSize(indices)
-        let numElements = chunkSize.reduce(1, *)
+        let numElements = chunkShape.reduce(1, *)
         let es = dataType.elementSize
         let byteCount = numElements * es
         if let singleValue = fillValueAsData() {
+            guard singleValue.count == es else {
+                throw ZarrArrayError.invalidDataSize(expected: es, got: singleValue.count)
+            }
             var result = Data(count: byteCount)
             result.withUnsafeMutableBytes { dst in
                 guard let dstPtr = dst.baseAddress else { return }
@@ -569,7 +513,7 @@ public struct ZarrArray: Sendable {
     }
 
     private func fillValueAsData() -> Data? {
-        guard let fillValue = _fillValue else { return nil }
+        guard let fillValue else { return nil }
         let size = dataType.elementSize
 
         switch fillValue {
@@ -680,7 +624,7 @@ public struct ZarrArray: Sendable {
     }
 
     private func collectAllChunkIndices() -> ChunkIndexBuffer {
-        collectChunkIndices(ranges: _numChunks.map { 0..<$0 })
+        collectChunkIndices(ranges: numChunks.map { 0..<$0 })
     }
 
     /// Copy a slice of `chunkData` into `output`, handling both C-order and F-order layouts.
@@ -698,7 +642,7 @@ public struct ZarrArray: Sendable {
         output.withUnsafeMutableBytes { dstRaw in
             chunkData.withUnsafeBytes { srcRaw in
                 guard let dstPtr = dstRaw.baseAddress, let srcPtr = srcRaw.baseAddress else { return }
-                if _orderIsF {
+                if orderIsF {
                     let localElements = localCount.reduce(1, *)
                     for flat in 0..<localElements {
                         var pos = flat
