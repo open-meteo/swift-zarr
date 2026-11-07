@@ -3,6 +3,10 @@ import Foundation
 public struct V2GroupMetadata: Codable, Sendable {
     public let zarrFormat: Int
 
+    public init(zarrFormat: Int = 2) {
+        self.zarrFormat = zarrFormat
+    }
+
     enum CodingKeys: String, CodingKey {
         case zarrFormat = "zarr_format"
     }
@@ -33,15 +37,15 @@ public struct V2ArrayMetadata: Codable, Sendable {
     }
 
     public init(
-        zarrFormat: Int,
+        zarrFormat: Int = 2,
         shape: [UInt64],
         chunks: [UInt64],
         dtype: String,
-        compressor: [String: ZarrJSONValue]?,
-        fillValue: ZarrJSONValue?,
-        order: Order? = nil,
-        filters: [[String: ZarrJSONValue]]?,
-        dimensionSeparator: String?
+        compressor: [String: ZarrJSONValue]? = nil,
+        fillValue: ZarrJSONValue? = nil,
+        order: Order = .C,
+        filters: [[String: ZarrJSONValue]]? = nil,
+        dimensionSeparator: String? = nil
     ) {
         self.zarrFormat = zarrFormat
         self.shape = shape
@@ -49,7 +53,7 @@ public struct V2ArrayMetadata: Codable, Sendable {
         self.dtype = dtype
         self.compressor = compressor
         self.fillValue = fillValue
-        self.order = order ?? .C
+        self.order = order
         self.filters = filters
         self.dimensionSeparator = dimensionSeparator
     }
@@ -61,10 +65,10 @@ public struct V2ArrayMetadata: Codable, Sendable {
             shape: container.decode([UInt64].self, forKey: .shape),
             chunks: container.decode([UInt64].self, forKey: .chunks),
             dtype: container.decode(String.self, forKey: .dtype),
-            compressor: container.decodeIfPresent([String: ZarrJSONValue].self, forKey: .compressor),
-            fillValue: container.decodeIfPresent(ZarrJSONValue.self, forKey: .fillValue),
-            order: container.decodeIfPresent(Order.self, forKey: .order),
-            filters: container.decodeIfPresent([[String: ZarrJSONValue]].self, forKey: .filters),
+            compressor: container.decode([String: ZarrJSONValue]?.self, forKey: .compressor),
+            fillValue: container.decode(ZarrJSONValue?.self, forKey: .fillValue),
+            order: container.decode(Order.self, forKey: .order),
+            filters: container.decode([[String: ZarrJSONValue]]?.self, forKey: .filters),
             dimensionSeparator: container.decodeIfPresent(String.self, forKey: .dimensionSeparator)
         )
     }

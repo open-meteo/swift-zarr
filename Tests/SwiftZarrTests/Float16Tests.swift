@@ -23,7 +23,7 @@ func testFloat16ArrayReads(version: Int, bigEndian: Bool) async throws {
     let array: ZarrArray
     if version == 2 {
         let json =
-            #"{"zarr_format":2,"shape":[3],"chunks":[2],"order":"C","dtype":"\#(bigEndian ? ">" : "<")f2","fill_value":-3}"#
+            #"{"zarr_format":2,"compressor":null,"filters":null,"shape":[3],"chunks":[2],"order":"C","dtype":"\#(bigEndian ? ">" : "<")f2","fill_value":-3}"#
         let metadata = try JSONDecoder().decode(V2ArrayMetadata.self, from: Data(json.utf8))
         array = try ZarrArray(metadata: metadata, storage: storage, path: "")
     } else {

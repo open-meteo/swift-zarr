@@ -4,7 +4,7 @@ import Testing
 @testable import SwiftZarr
 
 private func keyEncodingMetadata(
-    encoding: V3ArrayMetadata.ChunkKeyEncoding?
+    encoding: V3ArrayMetadata.ChunkKeyEncoding
 ) -> V3ArrayMetadata {
     V3ArrayMetadata(
         zarrFormat: 3,
@@ -62,8 +62,8 @@ func testV3ChunkStorage(name: String, separator: String, key: String) async thro
         Issue.record("Expected V3 metadata")
         return
     }
-    #expect(metadata.chunkKeyEncoding?.name == name)
-    #expect(metadata.chunkKeyEncoding?.configuration?.separator == separator)
+    #expect(metadata.chunkKeyEncoding.name == name)
+    #expect(metadata.chunkKeyEncoding.configuration?.separator == separator)
     let reread: [Int32]? = try await reopened.retrieveChunkIfExists([1, 2])
     #expect(reread == [42])
     try await reopened.eraseChunk([1, 2])
@@ -74,8 +74,8 @@ func testV3ChunkStorage(name: String, separator: String, key: String) async thro
 
 @Test
 func testV3MissingChunkKeyConfiguration() throws {
-    for metadata: V3ArrayMetadata.ChunkKeyEncoding? in [
-        nil, .init(name: "default", configuration: .init(separator: nil)),
+    for metadata: V3ArrayMetadata.ChunkKeyEncoding in [
+        .init(name: "default"), .init(name: "default", configuration: .init(separator: nil)),
     ] {
         #expect(try ChunkKeyEncoding(v3: metadata).key([1, 2]) == "c/1/2")
     }
