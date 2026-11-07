@@ -52,8 +52,11 @@ CASES["v3-blosc-level0-blocks"] = dict(zarr_format=3, dtype="int32", serializer=
 def expected(name):
     if name.endswith("scalar"):
         return np.array(42, dtype="int32")
-    shape = (17, 19) if name.endswith("-blocks") else (3, 5)
-    values = (np.arange(np.prod(shape), dtype="int32") * 17 - 11).reshape(shape)
+    shape = (17, 19) if name.endswith("-blocks") else ((9, 9) if "blosc" in name else (3, 5))
+    indices = np.arange(np.prod(shape), dtype="int32")
+    if "blosc" in name:
+        indices %= 8
+    values = (indices * 17 - 11).reshape(shape)
     if name == "v3-missing":
         values[2:, 3:] = -7
     return values
@@ -109,7 +112,7 @@ def generate():
     for name, options in CASES.items():
         values = expected(name)
         shape = values.shape
-        chunks = (16, 16) if name.endswith("-blocks") else ((2, 3) if shape else ())
+        chunks = (16, 16) if name.endswith("-blocks") else ((8, 8) if "blosc" in name else ((2, 3) if shape else ()))
         store = FIXTURES / name
         if options["zarr_format"] == 3 and shape:
             options = dict(options, dimension_names=["rows", None])
@@ -132,11 +135,14 @@ def generate():
                 assert encoded[:4] == b"\x1f\x8b\x08\x00"
                 path.write_bytes(encoded[:4] + bytes(4) + encoded[8:])
         np.testing.assert_array_equal(array[...], values)
+        if "blosc" in name and "level0" not in name:
+            encoded = (store / chunk_key(name, (0, 0))).read_bytes()
+            assert not encoded[2] & 2, f"{name}: first chunk bypassed compression/shuffle"
         # Independent nominal chunk buffers for exercising Swift's writer. NumPy
         # supplies padding and physical C/F order; no Swift helpers are involved.
         buffers = []
         grid = tuple((size + chunk - 1) // chunk for size, chunk in zip(shape, chunks))
-        for indices in np.ndindex(grid):
+        for indices in np.ndindex(grid) if options["compressors"] is None else []:
             if not (store / chunk_key(name, indices)).is_file():
                 continue
             block = np.full(chunks, -7, dtype="int32")

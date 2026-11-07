@@ -16,9 +16,12 @@ missing chunks, scalars, and nullable dimension names.
 Codec fixtures cover Blosc shuffle modes, auto-shuffle, typesize and block size,
 LZ4, gzip, zlib, and bzip2, including different compression levels.
 
-Most data arrays have shape `[3, 5]` and chunks `[2, 3]`; Blosc block-size
-cases use shape `[17, 19]` and chunks `[16, 16]`. Expected values
-follow `17 * flat_index - 11`, with fill value `-7`; scalars contain `42`.
+Most data arrays have shape `[3, 5]` and chunks `[2, 3]`; Blosc shuffle cases
+use shape `[9, 9]` and chunks `[8, 8]`, and Blosc block-size cases use shape
+`[17, 19]` and chunks `[16, 16]`. Expected values follow `17 * flat_index - 11`,
+with fill value `-7`; scalars contain `42`. Blosc inputs repeat every eight
+elements so they compress even without shuffle. The generator checks that the
+first chunk actually uses compression, except for the intentional level-zero case.
 The missing-chunk case leaves its bottom-right chunk absent. Gzip timestamps
 are normalized to zero for reproducibility; compressed payloads remain
 Python-generated. The malformed fixtures are valid gzip streams that decode
@@ -33,7 +36,9 @@ For uncompressed stores, Swift write tests compare serialized metadata and
 stored chunk bytes directly with the fixtures, including endianness, physical
 C/F order, and padding. They do not use Swift readback as the expected result.
 Compressed fixtures test reading only: valid encoders may produce different
-compressed bytes.
+compressed bytes. They do not verify that Swift encoding honors compression levels.
 
-The manifest records logical values and independently constructed nominal chunk
-buffers. Keep the generator and committed fixtures together when adding cases.
+The manifest records logical values and, for uncompressed stores only,
+independently constructed nominal chunk buffers. Each store runs as a separate
+Swift test case, so one failure does not prevent the remaining cases from running.
+Keep the generator and committed fixtures together when adding cases.
