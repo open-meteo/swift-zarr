@@ -6,17 +6,20 @@ public struct BloscCodec: Codec {
     private let shuffle: CInt
     private let typesize: Int
     private let compressorName: String
+    private let blockSize: Int
 
     public init(
         clevel: CInt = 5,
         shuffle: CInt = 1,
         typesize: Int = 4,
-        compressorName: String = "lz4"
+        compressorName: String = "lz4",
+        blockSize: Int = 0
     ) {
         self.clevel = clevel
         self.shuffle = shuffle
         self.typesize = typesize
         self.compressorName = compressorName
+        self.blockSize = blockSize
     }
 
     public func decode(_ data: Data) throws -> Data {
@@ -47,6 +50,7 @@ public struct BloscCodec: Codec {
     }
 
     public func encode(_ data: Data) throws -> Data {
+        try Self.validateBlockSize(blockSize)
         let nbytes = data.count
         // BLOSC_MAX_OVERHEAD is 16 bytes; worst-case compressed output is nbytes + 16.
         let destSize = nbytes + 16
@@ -65,7 +69,7 @@ public struct BloscCodec: Codec {
                     dstPtr,
                     destSize,
                     compressorName,
-                    0,
+                    blockSize,
                     1
                 )
             }
@@ -78,6 +82,13 @@ public struct BloscCodec: Codec {
         }
         output.removeLast(destSize - Int(result))
         return output
+    }
+
+    internal static func validateBlockSize(_ blockSize: Int) throws {
+        // c-blosc narrows the size_t argument to a signed 32-bit integer.
+        guard blockSize >= 0, Int32(exactly: blockSize) != nil else {
+            throw BloscError.compressFailed("block size must be in 0...Int32.max")
+        }
     }
 }
 
