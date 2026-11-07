@@ -7,12 +7,14 @@ private func encodedBlockSize(_ data: Data) -> Int {
     data.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 8, as: UInt32.self))) }
 }
 
-@Test(arguments: [256, 512])
-func testBloscExplicitBlockSize(blockSize: Int) throws {
-    let codec = BloscCodec(blockSize: blockSize)
+@Test(arguments: [(256, 256), (512, 4096)])
+func testBloscExplicitBlockSize(blockSize: Int, expectedBlockSize: Int) throws {
+    // With typesize 4, the vendored c-blosc starts splitting at 512 bytes.
+    // It enlarges that request, then caps the block at the 4096-byte input size.
+    let codec = BloscCodec(typesize: 4, blockSize: blockSize)
     let original = Data(repeating: 7, count: 4096)
     let encoded = try codec.encode(original)
-    #expect(encodedBlockSize(encoded) == blockSize)
+    #expect(encodedBlockSize(encoded) == expectedBlockSize)
     #expect(try codec.decode(encoded) == original)
 }
 
