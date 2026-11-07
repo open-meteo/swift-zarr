@@ -80,7 +80,27 @@ internal struct CodecPipeline: Sendable {
             let clevel = CInt(codec.configuration?["clevel"]?.intValue ?? 5)
             let shuffle = CInt(codec.configuration?["shuffle"]?.intValue ?? 1)
             let typesize = codec.configuration?["typesize"]?.intValue ?? elementSize
-            return BloscCodec(clevel: clevel, shuffle: shuffle, typesize: typesize, compressorName: cname)
+            let blockSize: Int
+            if let value = codec.configuration?["blocksize"] {
+                guard let integer = value.intValue else {
+                    throw ZarrArrayError.invalidCodecConfiguration("blosc: blocksize must be an integer")
+                }
+                blockSize = integer
+            } else {
+                blockSize = 0
+            }
+            do {
+                try BloscCodec.validateBlockSize(blockSize)
+            } catch {
+                throw ZarrArrayError.invalidCodecConfiguration("blosc: blocksize must be in 0...Int32.max")
+            }
+            return BloscCodec(
+                clevel: clevel,
+                shuffle: shuffle,
+                typesize: typesize,
+                compressorName: cname,
+                blockSize: blockSize
+            )
         default:
             throw ZarrArrayError.unsupportedCompressor(name)
         }
