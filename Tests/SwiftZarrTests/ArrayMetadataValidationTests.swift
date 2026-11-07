@@ -47,6 +47,36 @@ func testRejectInvalidV3Metadata(patch: String) throws {
 }
 
 @Test
+func testV3RequiredMetadataFields() throws {
+    let metadata = V3ArrayMetadata(
+        shape: [2],
+        dataType: "int32",
+        chunkGrid: .init(configuration: .init(chunkShape: [2])),
+        fillValue: .int(0),
+        codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])]
+    )
+    let encoded = try JSONEncoder().encode(metadata)
+    let json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    for key in ["chunk_key_encoding", "fill_value", "codecs"] {
+        #expect(json[key] != nil)
+        var missing = json
+        missing.removeValue(forKey: key)
+        let data = try JSONSerialization.data(withJSONObject: missing)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(V3ArrayMetadata.self, from: data)
+        }
+    }
+    for key in ["chunk_key_encoding", "codecs"] {
+        var null = json
+        null[key] = NSNull()
+        let data = try JSONSerialization.data(withJSONObject: null)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(V3ArrayMetadata.self, from: data)
+        }
+    }
+}
+
+@Test
 func testEmptyAndLargeRepresentableShapes() throws {
     let shapes: [[UInt64]] = [[UInt64(Int.max), UInt64(Int.max), 0], [UInt64(Int.max)], []]
     for shape in shapes {

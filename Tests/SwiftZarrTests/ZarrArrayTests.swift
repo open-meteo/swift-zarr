@@ -453,7 +453,7 @@ func testV3SeparatorDot() async throws {
         dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
         chunkKeyEncoding: .init(name: "default", configuration: .init(separator: ".")),
-        fillValue: nil,
+        fillValue: .int(0),
         codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
         storageTransformers: nil,
         dimensionNames: nil,
@@ -843,7 +843,6 @@ func testInvalidDtype() async throws {
             dtype: "invalid",
             compressor: nil,
             fillValue: nil,
-            order: nil,
             filters: nil,
             dimensionSeparator: nil
         )
@@ -1226,7 +1225,7 @@ func testV3ArrayWriteRead() async throws {
         dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
         chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
-        fillValue: nil,
+        fillValue: .int(0),
         codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
         storageTransformers: nil,
         dimensionNames: nil,
@@ -1348,7 +1347,7 @@ func testV3NestedGroups() async throws {
             dataType: "int32",
             chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
             chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
-            fillValue: nil,
+            fillValue: .int(0),
             codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
             storageTransformers: nil,
             dimensionNames: nil,
@@ -1402,7 +1401,7 @@ func testV3NestedGroupChildClassification() async throws {
             dataType: "int32",
             chunkGrid: .init(name: "regular", configuration: .init(chunkShape: [4])),
             chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
-            fillValue: nil,
+            fillValue: .int(0),
             codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
             storageTransformers: nil,
             dimensionNames: nil,
@@ -1449,7 +1448,7 @@ func testV3CompressorRoundtrip() async throws {
         dataType: "int32",
         chunkGrid: .init(name: "regular", configuration: .init(chunkShape: chunkShape)),
         chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
-        fillValue: nil,
+        fillValue: .int(0),
         codecs: codecs,
         storageTransformers: nil,
         dimensionNames: nil,
@@ -1810,7 +1809,6 @@ func testV2MetadataRequiredFields() async throws {
         dtype: "<i4",
         compressor: nil,
         fillValue: nil,
-        order: nil,
         filters: nil,
         dimensionSeparator: nil
     )
@@ -1830,11 +1828,12 @@ func testV2MetadataRequiredFields() async throws {
     #expect(try JSONSerialization.jsonObject(with: saved) as? NSDictionary == json as NSDictionary)
 }
 
-@Test(arguments: ["", ", \"order\": null", ", \"order\": \"F\""])
-func testV2OrderDefault(field: String) throws {
+@Test(arguments: ["", ", \"order\": null"])
+func testV2RejectMissingOrder(field: String) throws {
     let json = Data("{\"zarr_format\":2,\"shape\":[2],\"chunks\":[2],\"dtype\":\"<i4\"\(field)}".utf8)
-    let metadata = try JSONDecoder().decode(V2ArrayMetadata.self, from: json)
-    #expect(metadata.order == (field.contains("F") ? .F : .C))
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(V2ArrayMetadata.self, from: json)
+    }
 }
 
 @Test

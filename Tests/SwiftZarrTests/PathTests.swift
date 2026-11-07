@@ -39,7 +39,6 @@ private func pathArrayMetadata(_ version: ZarrVersion) -> ZarrArrayMetadata {
                 shape: [1],
                 dataType: "int32",
                 chunkGrid: .init(name: "regular", configuration: .init(chunkShape: [1])),
-                chunkKeyEncoding: nil,
                 fillValue: .int(0),
                 codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
                 storageTransformers: nil,

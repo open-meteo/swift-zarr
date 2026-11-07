@@ -3,9 +3,9 @@ internal enum ChunkKeyEncoding: Sendable {
     case `default`(separator: String)
     case v2(separator: String)
 
-    init(v3 metadata: V3ArrayMetadata.ChunkKeyEncoding?) throws {
-        let name = metadata?.name ?? "default"
-        let separator = metadata?.configuration?.separator
+    init(v3 metadata: V3ArrayMetadata.ChunkKeyEncoding) throws {
+        let name = metadata.name
+        let separator = metadata.configuration?.separator
         switch name {
         case "default": self = .default(separator: separator ?? "/")
         case "v2": self = .v2(separator: separator ?? ".")

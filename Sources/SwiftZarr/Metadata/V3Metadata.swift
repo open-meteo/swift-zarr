@@ -7,9 +7,9 @@ public struct V3ArrayMetadata: Codable, Sendable {
     public let shape: [UInt64]
     public let dataType: String
     public let chunkGrid: ChunkGrid
-    public let chunkKeyEncoding: ChunkKeyEncoding?
-    public let fillValue: ZarrJSONValue?
-    public let codecs: [V3Codec]?
+    public let chunkKeyEncoding: ChunkKeyEncoding
+    public let fillValue: ZarrJSONValue
+    public let codecs: [V3Codec]
     public let storageTransformers: [ZarrJSONValue]?
     public let dimensionNames: [String?]?
     public let attributes: [String: ZarrJSONValue]?
@@ -21,9 +21,9 @@ public struct V3ArrayMetadata: Codable, Sendable {
         shape: [UInt64],
         dataType: String,
         chunkGrid: ChunkGrid,
-        chunkKeyEncoding: ChunkKeyEncoding? = .init(name: "default", configuration: .init(separator: "/")),
-        fillValue: ZarrJSONValue?,
-        codecs: [V3Codec]?,
+        chunkKeyEncoding: ChunkKeyEncoding = .init(name: "default", configuration: .init(separator: "/")),
+        fillValue: ZarrJSONValue,
+        codecs: [V3Codec],
         storageTransformers: [ZarrJSONValue]? = nil,
         dimensionNames: [String?]? = nil,
         attributes: [String: ZarrJSONValue]? = nil

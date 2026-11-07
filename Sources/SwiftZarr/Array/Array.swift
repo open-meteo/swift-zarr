@@ -116,7 +116,7 @@ public struct ZarrArray: Sendable {
             }
             version = .v3
             let parsed = try ZarrDataType.parseV3(meta.dataType)
-            pipeline = try CodecPipeline(v3: meta.codecs ?? [], dataType: parsed)
+            pipeline = try CodecPipeline(v3: meta.codecs, dataType: parsed)
             dataType = ZarrDataType(endian: pipeline.serializer.endian, kind: parsed.kind, size: parsed.size)
             chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
             shape = try Self.checkedDimensions(meta.shape)

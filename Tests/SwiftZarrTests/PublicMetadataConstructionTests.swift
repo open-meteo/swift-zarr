@@ -21,7 +21,6 @@ func testPublicArrayMetadataConstruction(version: ZarrVersion) async throws {
                 shape: [3],
                 dataType: "int32",
                 chunkGrid: .init(configuration: .init(chunkShape: [2])),
-                chunkKeyEncoding: .init(name: "default", configuration: .init(separator: "/")),
                 fillValue: .int(9),
                 codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])],
                 dimensionNames: [nil],
@@ -32,6 +31,10 @@ func testPublicArrayMetadataConstruction(version: ZarrVersion) async throws {
         )
     }
     try await array.storeMetadata()
+    if case .v3(let metadata) = array.metadata {
+        #expect(metadata.chunkKeyEncoding.name == "default")
+        #expect(metadata.chunkKeyEncoding.configuration?.separator == "/")
+    }
     try await array.storeChunk([0], data: Data([1, 0, 0, 0, 2, 0, 0, 0]))
     let reopened = try await ZarrArray(storage: storage, path: "")
     #expect(reopened.version == version)
