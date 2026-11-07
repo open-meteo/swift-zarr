@@ -26,7 +26,7 @@ internal struct CodecPipeline: Sendable {
             throw ZarrArrayError.invalidCodecConfiguration("V2 compressor requires an id")
         }
         compressors = try codecs.filter { $0.name != "none" }.map {
-            try Self.resolveCompressor($0, elementSize: dataType.elementSize)
+            try Self.resolveCompressor($0, elementSize: dataType.elementSize, version: .v2)
         }
     }
 
@@ -49,7 +49,7 @@ internal struct CodecPipeline: Sendable {
                 serializer = .bytes(endian: dataType.elementSize == 1 ? .none : endian)
             } else {
                 // Resolve first so unsupported transforms/serializers are reported by name.
-                let resolved = try Self.resolveCompressor(codec, elementSize: dataType.elementSize)
+                let resolved = try Self.resolveCompressor(codec, elementSize: dataType.elementSize, version: .v3)
                 guard serializer != nil else {
                     throw ZarrArrayError.invalidCodecConfiguration("Compression must follow the serializer")
                 }
@@ -63,7 +63,13 @@ internal struct CodecPipeline: Sendable {
         self.compressors = compressors
     }
 
-    private static func resolveCompressor(_ codec: V3Codec, elementSize: Int) throws -> any Codec {
+    private static func resolveCompressor(
+        _ codec: V3Codec,
+        elementSize: Int,
+        version: ZarrVersion
+    ) throws
+        -> any Codec
+    {
         let name = codec.shortName
         switch name {
         case "gzip":
@@ -78,8 +84,35 @@ internal struct CodecPipeline: Sendable {
         case "blosc":
             let cname = codec.configuration?["cname"]?.stringValue ?? "lz4"
             let clevel = CInt(codec.configuration?["clevel"]?.intValue ?? 5)
-            let shuffle = CInt(codec.configuration?["shuffle"]?.intValue ?? 1)
-            let typesize = codec.configuration?["typesize"]?.intValue ?? elementSize
+            let config = codec.configuration ?? [:]
+            let typesize: Int
+            if let value = config["typesize"] {
+                guard let integer = value.intValue, (1...255).contains(integer) else {
+                    throw ZarrArrayError.invalidCodecConfiguration("blosc: typesize must be in 1...255")
+                }
+                typesize = integer
+            } else {
+                typesize = elementSize
+            }
+            let shuffle: CInt
+            switch version {
+            case .v3:
+                switch config["shuffle"] ?? .string("shuffle") {
+                case .string("noshuffle"): shuffle = 0
+                case .string("shuffle"): shuffle = 1
+                case .string("bitshuffle"): shuffle = 2
+                default: throw ZarrArrayError.invalidCodecConfiguration("blosc: invalid shuffle mode")
+                }
+                guard shuffle == 0 || config["typesize"] != nil else {
+                    throw ZarrArrayError.invalidCodecConfiguration("blosc: typesize is required when shuffling")
+                }
+            case .v2:
+                guard let mode = (config["shuffle"] ?? .int(1)).intValue, (-1...2).contains(mode) else {
+                    throw ZarrArrayError.invalidCodecConfiguration("blosc: shuffle must be in -1...2")
+                }
+                // Numcodecs auto uses bitshuffle for byte strides, byte shuffle otherwise.
+                shuffle = mode == -1 ? (typesize == 1 ? 2 : 1) : CInt(mode)
+            }
             let blockSize: Int
             if let value = codec.configuration?["blocksize"] {
                 guard let integer = value.intValue else {
