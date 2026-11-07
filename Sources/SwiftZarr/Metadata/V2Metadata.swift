@@ -203,18 +203,7 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
         case .null: try container.encodeNil()
         case .int(let v): try container.encode(v)
         case .uint(let v): try container.encode(v)
-        case .double(let v):
-            // JSONEncoder emits -0.0 as -0, which some readers parse as integer zero.
-            guard v != 0 || v.sign != .minus else {
-                throw EncodingError.invalidValue(
-                    v,
-                    .init(
-                        codingPath: encoder.codingPath,
-                        debugDescription: "Negative-zero metadata serialization is unsupported."
-                    )
-                )
-            }
-            try container.encode(v)
+        case .double(let v): try container.encode(v)
         case .string(let v): try container.encode(v)
         case .bool(let v): try container.encode(v)
         case .array(let v): try container.encode(v)

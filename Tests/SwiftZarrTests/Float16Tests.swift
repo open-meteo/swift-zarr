@@ -33,7 +33,8 @@ func testFloat16ArrayReads(version: Int, bigEndian: Bool) async throws {
         array = try ZarrArray(metadata: metadata, storage: storage, path: "")
     }
     try await array.storeMetadata()
-    let words: [UInt16] = [0x3c00, 0x4000].map { bigEndian ? $0.bigEndian : $0.littleEndian }
+    let bits: [UInt16] = [0x3c00, 0x4000]
+    let words = bits.map { bigEndian ? $0.bigEndian : $0.littleEndian }
     try await array.storeChunk([0], data: words.withUnsafeBytes { Data($0) })
     let reopened = try await ZarrArray(storage: storage, path: "")
     let chunk: [Float16] = try await reopened.retrieveChunk([0])
