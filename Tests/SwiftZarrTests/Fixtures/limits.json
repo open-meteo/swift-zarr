@@ -1,0 +1,122 @@
+[
+  {
+    "name": "v2-fill-bool",
+    "type": "bool",
+    "bits": 1
+  },
+  {
+    "name": "v2-fill-uint8-max",
+    "type": "uint8",
+    "bits": 255
+  },
+  {
+    "name": "v2-fill-int8-min",
+    "type": "int8",
+    "bits": 128
+  },
+  {
+    "name": "v2-fill-uint64-max",
+    "type": "uint64",
+    "bits": 18446744073709551615
+  },
+  {
+    "name": "v2-fill-uint64-exact",
+    "type": "uint64",
+    "bits": 9223372036854775809
+  },
+  {
+    "name": "v2-fill-int64-min",
+    "type": "int64",
+    "bits": 9223372036854775808
+  },
+  {
+    "name": "v2-fill-int64-max",
+    "type": "int64",
+    "bits": 9223372036854775807
+  },
+  {
+    "name": "v2-fill-float32-nan",
+    "type": "float32",
+    "bits": 2143289344
+  },
+  {
+    "name": "v2-fill-float32-infinity",
+    "type": "float32",
+    "bits": 2139095040
+  },
+  {
+    "name": "v2-fill-float32-negative-infinity",
+    "type": "float32",
+    "bits": 4286578688
+  },
+  {
+    "name": "v2-fill-float32-negative-zero",
+    "type": "float32",
+    "bits": 2147483648
+  },
+  {
+    "name": "v2-fill-float64-negative-zero",
+    "type": "float64",
+    "bits": 9223372036854775808
+  },
+  {
+    "name": "v3-fill-bool",
+    "type": "bool",
+    "bits": 1
+  },
+  {
+    "name": "v3-fill-uint8-max",
+    "type": "uint8",
+    "bits": 255
+  },
+  {
+    "name": "v3-fill-int8-min",
+    "type": "int8",
+    "bits": 128
+  },
+  {
+    "name": "v3-fill-uint64-max",
+    "type": "uint64",
+    "bits": 18446744073709551615
+  },
+  {
+    "name": "v3-fill-uint64-exact",
+    "type": "uint64",
+    "bits": 9223372036854775809
+  },
+  {
+    "name": "v3-fill-int64-min",
+    "type": "int64",
+    "bits": 9223372036854775808
+  },
+  {
+    "name": "v3-fill-int64-max",
+    "type": "int64",
+    "bits": 9223372036854775807
+  },
+  {
+    "name": "v3-fill-float32-nan",
+    "type": "float32",
+    "bits": 2143289344
+  },
+  {
+    "name": "v3-fill-float32-infinity",
+    "type": "float32",
+    "bits": 2139095040
+  },
+  {
+    "name": "v3-fill-float32-negative-infinity",
+    "type": "float32",
+    "bits": 4286578688
+  },
+  {
+    "name": "v3-fill-float32-negative-zero",
+    "type": "float32",
+    "bits": 2147483648
+  },
+  {
+    "name": "v3-fill-float64-negative-zero",
+    "type": "float64",
+    "bits": 9223372036854775808
+  }
+]

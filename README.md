@@ -33,7 +33,7 @@ targets: [
 ## Features
 
 - **Zarr V2 and V3** — read and write arrays and groups
-- **Codecs** — Blosc+LZ4 (vendored c-blosc), gzip, zlib, bzip2, and uncompressed
+- **Codecs** — Blosc (vendored c-blosc), V2 LZ4 (size-prefixed blocks), gzip, zlib, bzip2, and uncompressed
 - **Storage backends** — local filesystem, S3-compatible (AWS, GCS, etc.)
 - **Typed reads** — generic `retrieveChunk` and `retrieveArraySubset` returning typed Swift arrays
 - **Slice/subset reading** — retrieve arbitrary N-dimensional ranges without loading full chunks
@@ -76,6 +76,10 @@ Copies keep independent snapshots. Reopen a group to read external changes. Fail
 swift build
 swift test
 ```
+
+`swift test` runs unit tests, committed Zarr-Python fixture tests, and live GCS tests
+(which require network access).
+See [interoperability testing](Tests/Interop/README.md) for coverage and fixture regeneration.
 
 ## TODO
 

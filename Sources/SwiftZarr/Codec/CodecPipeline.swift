@@ -80,7 +80,16 @@ internal struct CodecPipeline: Sendable {
             let level = codec.configuration?["level"]?.intValue ?? 5
             return BZip2Codec(level: level)
         case "lz4":
-            return LZ4Codec()
+            let acceleration: Int
+            if let value = codec.configuration?["acceleration"] {
+                guard let integer = value.intValue, (1...Int(Int32.max)).contains(integer) else {
+                    throw ZarrArrayError.invalidCodecConfiguration("lz4: acceleration must be in 1...Int32.max")
+                }
+                acceleration = integer
+            } else {
+                acceleration = 1
+            }
+            return LZ4Codec(acceleration: acceleration)
         case "blosc":
             let cname = codec.configuration?["cname"]?.stringValue ?? "lz4"
             let clevel = CInt(codec.configuration?["clevel"]?.intValue ?? 5)
