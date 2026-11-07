@@ -19,13 +19,6 @@ public enum ZarrArrayMetadata: Sendable {
     case v3(V3ArrayMetadata)
 }
 
-private struct DerivedArrayProperties: Sendable {
-    let shape: [Int]
-    let chunkShape: [Int]
-    let numChunks: [Int]
-    let orderIsF: Bool
-}
-
 /// A flat buffer of chunk indices using a single heap allocation.
 /// Each chunk's `ndim` coordinates are stored contiguously; chunk `i` occupies
 /// `storage[i*ndim ..< (i+1)*ndim]`.
@@ -90,7 +83,6 @@ public struct ZarrArray: Sendable {
         self.path = try normalizeZarrPath(path)
         self.metadata = metadata
 
-        let derived: DerivedArrayProperties
         let pipeline: CodecPipeline
         let dataType: ZarrDataType
         switch metadata {
@@ -99,7 +91,9 @@ public struct ZarrArray: Sendable {
             dataType = try ZarrDataType.parse(meta.dtype)
             pipeline = try CodecPipeline(v2: meta, dataType: dataType)
             chunkKeyEncoding = .v2(separator: meta.dimensionSeparator ?? ".")
-            derived = Self.computeDerived(shape: meta.shape, chunkShape: meta.chunks, orderIsF: meta.order == .F)
+            shape = meta.shape.map(Int.init)
+            chunkShape = meta.chunks.map(Int.init)
+            orderIsF = meta.order == .F
             fillValue = meta.fillValue
         case .v3(let meta):
             version = .v3
@@ -107,26 +101,21 @@ public struct ZarrArray: Sendable {
             pipeline = try CodecPipeline(v3: meta.codecs ?? [], dataType: parsed)
             dataType = ZarrDataType(endian: pipeline.serializer.endian, kind: parsed.kind, size: parsed.size)
             chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
-            derived = Self.computeDerived(
-                shape: meta.shape,
-                chunkShape: meta.chunkGrid.configuration.chunkShape,
-                orderIsF: false
-            )
+            shape = meta.shape.map(Int.init)
+            chunkShape = meta.chunkGrid.configuration.chunkShape.map(Int.init)
+            orderIsF = false
             fillValue = meta.fillValue
         }
 
         self.dataType = dataType
-        shape = derived.shape
-        chunkShape = derived.chunkShape
-        numChunks = derived.numChunks
-        orderIsF = derived.orderIsF
-        var chunkStride = [Int](repeating: 1, count: derived.chunkShape.count)
+        numChunks = zip(shape, chunkShape).map { size, chunk in (size + chunk - 1) / chunk }
+        var chunkStride = [Int](repeating: 1, count: chunkShape.count)
         var elements = 1
         let dimensions =
-            derived.orderIsF ? Array(derived.chunkShape.indices) : Array(derived.chunkShape.indices.reversed())
+            orderIsF ? Array(chunkShape.indices) : Array(chunkShape.indices.reversed())
         for d in dimensions {
             chunkStride[d] = elements
-            let (product, overflow) = elements.multipliedReportingOverflow(by: derived.chunkShape[d])
+            let (product, overflow) = elements.multipliedReportingOverflow(by: chunkShape[d])
             guard !overflow else { throw ZarrArrayError.invalidMetadata("chunk element count overflows Int") }
             elements = product
         }
@@ -151,23 +140,6 @@ public struct ZarrArray: Sendable {
     @available(*, deprecated, renamed: "init(metadata:storage:path:)")
     public init(v3Metadata: V3ArrayMetadata, storage: any Storage, path: String) throws {
         try self.init(metadata: v3Metadata, storage: storage, path: path)
-    }
-
-    private static func computeDerived(
-        shape: [UInt64],
-        chunkShape: [UInt64],
-        orderIsF: Bool
-    ) -> DerivedArrayProperties {
-        let s = shape.map(Int.init)
-        let c = chunkShape.map(Int.init)
-        let ndim = s.count
-        let numChunks = (0..<ndim).map { d in (s[d] + c[d] - 1) / c[d] }
-        return DerivedArrayProperties(
-            shape: s,
-            chunkShape: c,
-            numChunks: numChunks,
-            orderIsF: orderIsF
-        )
     }
 
     /// Number of chunks per dimension (the chunk grid shape).
