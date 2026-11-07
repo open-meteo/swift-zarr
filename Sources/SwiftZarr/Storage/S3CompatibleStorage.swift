@@ -151,7 +151,7 @@ public final class S3CompatibleStorage: Storage {
         _ = try? await response.body.collect(upTo: 1024)
         switch response.status.code {
         case 200: return true
-        case 400, 404: return false
+        case 404: return false
         default:
             throw StorageError.httpError(statusCode: Int(response.status.code), path: path)
         }
