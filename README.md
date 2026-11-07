@@ -4,7 +4,7 @@ A native Swift library for reading and writing [Zarr](https://zarr.dev) V2 and V
 
 ## Requirements
 
-- Swift 6.0+
+- Swift 6.2+
 - Swift Package Manager
 - macOS 15+ / iOS 18+
 

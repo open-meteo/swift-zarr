@@ -22,12 +22,12 @@ extension Float: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Float>.size)
         }
         let count = data.count / MemoryLayout<Float>.size
-        var result = [Float](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in
-            data.copyBytes(to: dest, from: data.startIndex..<data.endIndex)
+        var result = [Float](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
         }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { Float(bitPattern: $0.bitPattern.byteSwapped) }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -42,12 +42,12 @@ extension Double: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Double>.size)
         }
         let count = data.count / MemoryLayout<Double>.size
-        var result = [Double](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in
-            data.copyBytes(to: dest, from: data.startIndex..<data.endIndex)
+        var result = [Double](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
         }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { Double(bitPattern: $0.bitPattern.byteSwapped) }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -71,10 +71,12 @@ extension Int16: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Int16>.size)
         }
         let count = data.count / MemoryLayout<Int16>.size
-        var result = [Int16](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        var result = [Int16](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
+        }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { $0.byteSwapped }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -88,10 +90,12 @@ extension Int32: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Int32>.size)
         }
         let count = data.count / MemoryLayout<Int32>.size
-        var result = [Int32](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        var result = [Int32](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
+        }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { $0.byteSwapped }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -105,10 +109,12 @@ extension Int64: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<Int64>.size)
         }
         let count = data.count / MemoryLayout<Int64>.size
-        var result = [Int64](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        var result = [Int64](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
+        }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { $0.byteSwapped }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -132,10 +138,12 @@ extension UInt16: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<UInt16>.size)
         }
         let count = data.count / MemoryLayout<UInt16>.size
-        var result = [UInt16](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        var result = [UInt16](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
+        }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { $0.byteSwapped }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -149,10 +157,12 @@ extension UInt32: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<UInt32>.size)
         }
         let count = data.count / MemoryLayout<UInt32>.size
-        var result = [UInt32](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        var result = [UInt32](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
+        }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { $0.byteSwapped }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -166,10 +176,12 @@ extension UInt64: ZarrElement {
             throw ZarrElementError.invalidByteCount(data.count, elementSize: MemoryLayout<UInt64>.size)
         }
         let count = data.count / MemoryLayout<UInt64>.size
-        var result = [UInt64](repeating: 0, count: count)
-        _ = result.withUnsafeMutableBytes { dest in data.copyBytes(to: dest) }
+        var result = [UInt64](unsafeUninitializedCapacity: count) { buffer, initialized in
+            data.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+            initialized = count
+        }
         if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
-            result = result.map { $0.byteSwapped }
+            swapByteOrder(&result)
         }
         return result
     }
@@ -182,5 +194,48 @@ extension Bool: ZarrElement {
     public static var zarrDtypeSize: Int { 1 }
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Bool] {
         data.map { $0 != 0 }
+    }
+}
+
+// Only built-in numeric types conform: every bit pattern is valid, and their
+// contiguous Swift representation matches the Zarr fixed-width representation.
+// BitwiseCopyable alone does not guarantee either property (notably for Bool).
+internal protocol NativeZarrElement: ZarrElement, BitwiseCopyable, AdditiveArithmetic {
+    // A concrete witness lets the compiler optimize zero initialization.
+    static func makeArray(count: Int) -> [Self]
+    static func swapByteOrder(_ values: inout [Self])
+}
+
+extension NativeZarrElement {
+    static func makeArray(count: Int) -> [Self] { [Self](repeating: .zero, count: count) }
+}
+
+extension NativeZarrElement where Self: FixedWidthInteger {
+    static func swapByteOrder(_ values: inout [Self]) {
+        var span = values.mutableSpan
+        for i in span.indices { span[i] = span[i].byteSwapped }
+    }
+}
+
+extension Int8: NativeZarrElement {}
+extension Int16: NativeZarrElement {}
+extension Int32: NativeZarrElement {}
+extension Int64: NativeZarrElement {}
+extension UInt8: NativeZarrElement {}
+extension UInt16: NativeZarrElement {}
+extension UInt32: NativeZarrElement {}
+extension UInt64: NativeZarrElement {}
+
+extension Float: NativeZarrElement {
+    static func swapByteOrder(_ values: inout [Float]) {
+        var span = values.mutableSpan
+        for i in span.indices { span[i] = Float(bitPattern: span[i].bitPattern.byteSwapped) }
+    }
+}
+
+extension Double: NativeZarrElement {
+    static func swapByteOrder(_ values: inout [Double]) {
+        var span = values.mutableSpan
+        for i in span.indices { span[i] = Double(bitPattern: span[i].bitPattern.byteSwapped) }
     }
 }
