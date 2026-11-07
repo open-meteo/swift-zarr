@@ -212,8 +212,9 @@ extension NativeZarrElement {
 
 extension NativeZarrElement where Self: FixedWidthInteger {
     static func swapByteOrder(_ values: inout [Self]) {
-        var span = values.mutableSpan
-        for i in span.indices { span[i] = span[i].byteSwapped }
+        values.withUnsafeMutableBufferPointer { buffer in
+            for i in buffer.indices { buffer[i] = buffer[i].byteSwapped }
+        }
     }
 }
 
@@ -228,14 +229,16 @@ extension UInt64: NativeZarrElement {}
 
 extension Float: NativeZarrElement {
     static func swapByteOrder(_ values: inout [Float]) {
-        var span = values.mutableSpan
-        for i in span.indices { span[i] = Float(bitPattern: span[i].bitPattern.byteSwapped) }
+        values.withUnsafeMutableBufferPointer { buffer in
+            for i in buffer.indices { buffer[i] = Float(bitPattern: buffer[i].bitPattern.byteSwapped) }
+        }
     }
 }
 
 extension Double: NativeZarrElement {
     static func swapByteOrder(_ values: inout [Double]) {
-        var span = values.mutableSpan
-        for i in span.indices { span[i] = Double(bitPattern: span[i].bitPattern.byteSwapped) }
+        values.withUnsafeMutableBufferPointer { buffer in
+            for i in buffer.indices { buffer[i] = Double(bitPattern: buffer[i].bitPattern.byteSwapped) }
+        }
     }
 }
