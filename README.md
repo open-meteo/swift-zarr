@@ -33,7 +33,7 @@ targets: [
 ## Features
 
 - **Zarr V2 and V3** — read and write arrays and groups
-- **Codecs** — Blosc+LZ4 (vendored c-blosc), gzip, zlib, bzip2, and uncompressed
+- **Codecs** — Blosc (vendored c-blosc), V2 LZ4 (size-prefixed blocks), gzip, zlib, bzip2, and uncompressed
 - **Storage backends** — local filesystem, S3-compatible (AWS, GCS, etc.)
 - **Typed reads** — generic `retrieveChunk` and `retrieveArraySubset` returning typed Swift arrays
 - **Slice/subset reading** — retrieve arbitrary N-dimensional ranges without loading full chunks
