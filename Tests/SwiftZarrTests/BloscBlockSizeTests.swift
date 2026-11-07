@@ -20,7 +20,7 @@ func testBloscExplicitBlockSize(blockSize: Int, expectedBlockSize: Int) throws {
 
 @Test(arguments: [2, 3])
 func testBloscMetadataBlockSize(version: Int) throws {
-    let config: [String: ZarrJSONValue] = ["blocksize": .int(256)]
+    let config: [String: ZarrJSONValue] = ["blocksize": .int(256), "typesize": .int(4)]
     let pipeline: CodecPipeline
     let dtype = try ZarrDataType.parse("<i4")
     if version == 2 {
@@ -59,7 +59,7 @@ func testBloscRejectsInvalidBlockSize(blockSize: Int) throws {
         try CodecPipeline(
             v3: [
                 .init(name: "bytes", configuration: ["endian": .string("little")]),
-                .init(name: "blosc", configuration: ["blocksize": .int(Int64(blockSize))]),
+                .init(name: "blosc", configuration: ["blocksize": .int(Int64(blockSize)), "typesize": .int(4)]),
             ],
             dataType: ZarrDataType.parse("<i4")
         )
