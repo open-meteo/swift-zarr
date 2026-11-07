@@ -77,6 +77,10 @@ swift build
 swift test
 ```
 
+`swift test` runs unit tests, committed Zarr-Python fixture tests, and live GCS tests
+(which require network access).
+See [interoperability testing](Tests/Interop/README.md) for coverage and fixture regeneration.
+
 ## TODO
 
 - V2 filter support (nonempty filter chains are currently rejected)

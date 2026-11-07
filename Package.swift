@@ -50,7 +50,8 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftZarrTests",
-            dependencies: ["SwiftZarr"]
+            dependencies: ["SwiftZarr"],
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageModes: [.v6]
