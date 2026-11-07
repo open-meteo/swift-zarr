@@ -71,3 +71,36 @@ func testSignedJSONIntegersRemainExact(number: Int64) throws {
     #expect(value.intValue == Int(exactly: number))
     #expect(try JSONEncoder().encode(value) == source)
 }
+
+@Test(arguments: [
+    ZarrJSONValue.double(-0.0),
+    .object(["nested": .array([.double(-0.0)])]),
+])
+func testRejectNegativeZeroJSONEncoding(value: ZarrJSONValue) throws {
+    #expect(throws: EncodingError.self) { try JSONEncoder().encode(value) }
+    #expect(try JSONEncoder().encode(ZarrJSONValue.double(0.0)) == Data("0".utf8))
+}
+
+@Test
+func testNegativeZeroSaveLeavesMetadataUntouched() async throws {
+    let path = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    let storage = LocalFileStorage(basePath: path)
+    let source = Data(
+        #"{"zarr_format":2,"shape":[1],"chunks":[1],"order":"C","dtype":"<f4","fill_value":-0.0}"#.utf8
+    )
+    try await storage.write(path: ".zarray", data: source)
+    let array = try await ZarrArray(storage: storage, path: "")
+    let values: [Float] = try await array.retrieveChunk([0])
+    #expect(values.map(\.bitPattern) == [0x8000_0000])
+    await #expect(throws: EncodingError.self) { try await array.storeMetadata() }
+    #expect(try await storage.read(path: ".zarray") == source)
+
+    let metadata = try JSONDecoder().decode(V2GroupMetadata.self, from: Data(#"{"zarr_format":2}"#.utf8))
+    var group = try ZarrGroup(metadata: metadata, storage: storage, path: "group")
+    group.attributes["nested"] = .array([.double(-0.0)])
+    await #expect(throws: EncodingError.self) { try await group.storeMetadata() }
+    #expect(try await !storage.exists(path: "group/.zgroup"))
+    #expect(try await !storage.exists(path: "group/.zattrs"))
+    #expect(group.attributes["nested"] == .array([.double(-0.0)]))
+}
