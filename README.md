@@ -83,7 +83,7 @@ swift test
 - Zstd codec (requires a separate dependency not included in SWCompression)
 - Consolidated metadata (`.zmetadata`) to reduce round-trips on remote storage
 - LRU chunk cache to avoid redundant decompression for overlapping reads
-- float16 / bfloat16 data type support
+- bfloat16 data type support
 
 ## License
 
