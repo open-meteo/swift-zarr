@@ -77,13 +77,17 @@ swift build
 swift test
 ```
 
+Float16 typed reads and fill values are supported where Swift provides `Float16`,
+including Apple silicon macOS and Linux. Swift does not provide `Float16` on
+Intel macOS.
+
 ## TODO
 
 - V2 filter support (nonempty filter chains are currently rejected)
 - Zstd codec (requires a separate dependency not included in SWCompression)
 - Consolidated metadata (`.zmetadata`) to reduce round-trips on remote storage
 - LRU chunk cache to avoid redundant decompression for overlapping reads
-- float16 / bfloat16 data type support
+- bfloat16 data type support
 
 ## License
 

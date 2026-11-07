@@ -122,26 +122,15 @@ extension ZarrDataType {
                 default: throw invalidFill()
                 }
             }
-            let number: Double
-            switch value {
-            case .int(let value): number = Double(value)
-            case .uint(let value): number = Double(value)
-            case .double(let value): number = value
-            case .string("NaN"): number = .nan
-            case .string("Infinity"): number = .infinity
-            case .string("-Infinity"): number = -.infinity
-            default: throw invalidFill()
-            }
             switch size {
             case 2:
-                let converted = Float16(number)
-                guard !number.isFinite || converted.isFinite else { throw invalidFill() }
-                return data(from: converted.bitPattern)
-            case 4:
-                let converted = Float(number)
-                guard !number.isFinite || converted.isFinite else { throw invalidFill() }
-                return data(from: converted)
-            case 8: return data(from: number)
+                #if (os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64)
+                throw ZarrArrayError.invalidMetadata("numeric float16 fills are unavailable on Intel macOS")
+                #else
+                return try data(from: floatingFill(value, as: Float16.self).bitPattern)
+                #endif
+            case 4: return try data(from: floatingFill(value, as: Float.self))
+            case 8: return try data(from: floatingFill(value, as: Double.self))
             default: throw invalidFill()
             }
         case (.complex, _):
@@ -150,6 +139,23 @@ extension ZarrDataType {
             return try component.encodeFillValue(parts[0]) + component.encodeFillValue(parts[1])
         default: throw invalidFill()
         }
+    }
+
+    private func floatingFill<T: BinaryFloatingPoint>(_ value: ZarrJSONValue, as type: T.Type) throws -> T {
+        let result: T
+        switch value {
+        case .int(let value): result = T(value)
+        case .uint(let value): result = T(value)
+        case .double(let value):
+            result = T(value)
+            if !value.isFinite { return result }
+        case .string("NaN"): return .nan
+        case .string("Infinity"): return .infinity
+        case .string("-Infinity"): return -.infinity
+        default: throw invalidFill()
+        }
+        guard result.isFinite else { throw invalidFill() }
+        return result
     }
 
     private func integerFill<T: FixedWidthInteger>(_ value: ZarrJSONValue, as type: T.Type) throws -> T {

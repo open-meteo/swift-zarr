@@ -22,9 +22,18 @@ func testComplexAndHalfPrecisionFillEncoding() throws {
     #expect(try complex.encodeFillValue(.array([.int(1), .int(-2)])) == Data([0x3f, 0x80, 0, 0, 0xc0, 0, 0, 0]))
     #expect(throws: ZarrArrayError.self) { try complex.encodeFillValue(.array([.int(1)])) }
     let half = try ZarrDataType.parse(">f2")
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     #expect(try half.encodeFillValue(.double(-0.0)) == Data([0x80, 0]))
+    #endif
     #expect(try half.encodeFillValue(.string("0x7e12")) == Data([0x7e, 0x12]))
     #expect(throws: ZarrArrayError.self) { try half.encodeFillValue(.double(1e100)) }
+}
+
+@Test
+func testIntegerFloatFillAvoidsDoubleRounding() throws {
+    let dtype = try ZarrDataType.parse(">f4")
+    #expect(try dtype.encodeFillValue(.int(4_611_686_293_305_294_849)) == Data([0x5e, 0x80, 0, 1]))
+    #expect(try dtype.encodeFillValue(.uint(4_611_686_293_305_294_849)) == Data([0x5e, 0x80, 0, 1]))
 }
 
 @Test(arguments: [
