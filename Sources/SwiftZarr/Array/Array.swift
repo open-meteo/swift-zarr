@@ -116,6 +116,15 @@ public struct ZarrArray: Sendable {
             }
             version = .v3
             let parsed = try ZarrDataType.parseV3(meta.dataType)
+            switch (parsed.kind, meta.fillValue) {
+            case (.bool, .bool), (.int, .int), (.int, .uint), (.uint, .int), (.uint, .uint),
+                (.float, .int), (.float, .uint), (.float, .string):
+                break
+            case (.float, .double(let value)) where value.isFinite:
+                break
+            default:
+                throw ZarrArrayError.invalidMetadata("invalid V3 fill_value representation for \(meta.dataType)")
+            }
             pipeline = try CodecPipeline(v3: meta.codecs, dataType: parsed)
             dataType = ZarrDataType(endian: pipeline.serializer.endian, kind: parsed.kind, size: parsed.size)
             chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)

@@ -13,6 +13,7 @@ import Testing
 func testRejectInvalidV2Metadata(patch: String) throws {
     var json: [String: Any] = [
         "zarr_format": 2, "shape": [2], "chunks": [2], "dtype": "<i4", "order": "C",
+        "compressor": NSNull(), "fill_value": NSNull(), "filters": NSNull(),
     ]
     json.merge(try JSONSerialization.jsonObject(with: Data(patch.utf8)) as! [String: Any]) { _, new in new }
     let data = try JSONSerialization.data(withJSONObject: json)
@@ -43,6 +44,26 @@ func testRejectInvalidV3Metadata(patch: String) throws {
     let metadata = try JSONDecoder().decode(V3ArrayMetadata.self, from: JSONSerialization.data(withJSONObject: json))
     #expect(throws: ZarrArrayError.self) {
         try ZarrArray(metadata: metadata, storage: LocalFileStorage(basePath: "/unused"), path: "")
+    }
+}
+
+@Test
+func testV2RequiredNullableFields() throws {
+    let metadata = V2ArrayMetadata(shape: [1], chunks: [1], dtype: "<i4")
+    let encoded = try JSONEncoder().encode(metadata)
+    let json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    let decoded = try JSONDecoder().decode(V2ArrayMetadata.self, from: encoded)
+    #expect(decoded.compressor == nil)
+    #expect(decoded.fillValue == nil)
+    #expect(decoded.filters == nil)
+    for key in ["compressor", "fill_value", "filters"] {
+        #expect(json[key] is NSNull)
+        var missing = json
+        missing.removeValue(forKey: key)
+        let data = try JSONSerialization.data(withJSONObject: missing)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(V2ArrayMetadata.self, from: data)
+        }
     }
 }
 

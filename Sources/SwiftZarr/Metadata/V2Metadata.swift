@@ -65,10 +65,10 @@ public struct V2ArrayMetadata: Codable, Sendable {
             shape: container.decode([UInt64].self, forKey: .shape),
             chunks: container.decode([UInt64].self, forKey: .chunks),
             dtype: container.decode(String.self, forKey: .dtype),
-            compressor: container.decodeIfPresent([String: ZarrJSONValue].self, forKey: .compressor),
-            fillValue: container.decodeIfPresent(ZarrJSONValue.self, forKey: .fillValue),
+            compressor: container.decode([String: ZarrJSONValue]?.self, forKey: .compressor),
+            fillValue: container.decode(ZarrJSONValue?.self, forKey: .fillValue),
             order: container.decode(Order.self, forKey: .order),
-            filters: container.decodeIfPresent([[String: ZarrJSONValue]].self, forKey: .filters),
+            filters: container.decode([[String: ZarrJSONValue]]?.self, forKey: .filters),
             dimensionSeparator: container.decodeIfPresent(String.self, forKey: .dimensionSeparator)
         )
     }

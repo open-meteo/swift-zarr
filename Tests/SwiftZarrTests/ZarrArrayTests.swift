@@ -1830,7 +1830,10 @@ func testV2MetadataRequiredFields() async throws {
 
 @Test(arguments: ["", ", \"order\": null"])
 func testV2RejectMissingOrder(field: String) throws {
-    let json = Data("{\"zarr_format\":2,\"shape\":[2],\"chunks\":[2],\"dtype\":\"<i4\"\(field)}".utf8)
+    let json = Data(
+        "{\"zarr_format\":2,\"shape\":[2],\"chunks\":[2],\"dtype\":\"<i4\",\"compressor\":null,\"filters\":null,\"fill_value\":null\(field)}"
+            .utf8
+    )
     #expect(throws: DecodingError.self) {
         try JSONDecoder().decode(V2ArrayMetadata.self, from: json)
     }

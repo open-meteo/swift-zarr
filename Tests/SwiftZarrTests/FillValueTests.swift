@@ -10,7 +10,8 @@ import Testing
     (">c8", "[1,-2]"), (">c8", "null"),
 ])
 func testRejectInvalidFills(dtype: String, fill: String) throws {
-    let json = #"{"zarr_format":2,"shape":[1],"chunks":[1],"order":"C","dtype":"\#(dtype)","fill_value":\#(fill)}"#
+    let json =
+        #"{"zarr_format":2,"compressor":null,"filters":null,"shape":[1],"chunks":[1],"order":"C","dtype":"\#(dtype)","fill_value":\#(fill)}"#
     let metadata = try JSONDecoder().decode(V2ArrayMetadata.self, from: Data(json.utf8))
     #expect(throws: ZarrArrayError.self) {
         try ZarrArray(metadata: metadata, storage: LocalFileStorage(basePath: "/unused"), path: "")
@@ -25,6 +26,51 @@ func testHalfPrecisionFillEncoding() throws {
     #endif
     #expect(try half.encodeFillValue(.string("0x7e12")) == Data([0x7e, 0x12]))
     #expect(throws: ZarrArrayError.self) { try half.encodeFillValue(.double(1e100)) }
+}
+
+@Test(arguments: [
+    ("bool", ZarrJSONValue.null), ("bool", .int(0)), ("bool", .uint(1)),
+    ("int32", .null), ("int32", .string("1")), ("int32", .double(1)), ("int32", .bool(true)),
+    ("uint32", .null), ("uint32", .string("1")), ("uint32", .int(-1)),
+    ("float32", .null), ("float32", .bool(false)), ("float32", .string("1.5")),
+    ("float64", .double(.infinity)), ("float64", .double(.nan)),
+])
+func testRejectInvalidV3FillRepresentations(dtype: String, fill: ZarrJSONValue) throws {
+    let metadata = V3ArrayMetadata(
+        shape: [1],
+        dataType: dtype,
+        chunkGrid: .init(configuration: .init(chunkShape: [1])),
+        fillValue: fill,
+        codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])]
+    )
+    #expect(throws: ZarrArrayError.self) {
+        try ZarrArray(metadata: metadata, storage: LocalFileStorage(basePath: "/unused"), path: "")
+    }
+}
+
+@Test(arguments: [
+    ("bool", ZarrJSONValue.bool(true), [UInt8(1)]),
+    ("bool", .bool(false), [0]),
+    ("int32", .int(-1), [255, 255, 255, 255]),
+    ("uint32", .uint(1), [1, 0, 0, 0]),
+    ("float32", .double(1.5), [0, 0, 192, 63]),
+    ("float32", .string("Infinity"), [0, 0, 128, 127]),
+    ("float32", .string("0x7fc00001"), [1, 0, 192, 127]),
+])
+func testV3FillRepresentations(dtype: String, fill: ZarrJSONValue, expected: [UInt8]) async throws {
+    let path = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    let metadata = V3ArrayMetadata(
+        shape: [1],
+        dataType: dtype,
+        chunkGrid: .init(configuration: .init(chunkShape: [1])),
+        fillValue: fill,
+        codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])]
+    )
+    let array = try ZarrArray(metadata: metadata, storage: LocalFileStorage(basePath: path), path: "")
+    try await array.storeMetadata()
+    let reopened = try await ZarrArray(storage: array.storage, path: "")
+    #expect(try await reopened.readChunkRaw([0]) == Data(expected))
 }
 
 @Test
@@ -47,7 +93,8 @@ func testIntegerFloatFillAvoidsDoubleRounding() throws {
 func testMissingChunkFillBytes(dtype: String, fill: String, expected: [UInt8]) async throws {
     let path = try createTempDir()
     defer { try? FileManager.default.removeItem(atPath: path) }
-    let json = #"{"zarr_format":2,"shape":[3],"chunks":[2],"order":"C","dtype":"\#(dtype)","fill_value":\#(fill)}"#
+    let json =
+        #"{"zarr_format":2,"compressor":null,"filters":null,"shape":[3],"chunks":[2],"order":"C","dtype":"\#(dtype)","fill_value":\#(fill)}"#
     let metadata = try JSONDecoder().decode(V2ArrayMetadata.self, from: Data(json.utf8))
     let array = try ZarrArray(metadata: metadata, storage: LocalFileStorage(basePath: path), path: "")
     // Missing edge chunks still have the nominal stored size.
