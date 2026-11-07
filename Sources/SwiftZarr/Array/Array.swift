@@ -51,7 +51,7 @@ public struct ZarrArray: Sendable {
     public let shape: [Int]
     public let chunkShape: [Int]
 
-    private let fillValue: ZarrJSONValue?
+    private let encodedFillValue: Data
     private let numChunks: [Int]
     private let chunkKeyEncoding: ChunkKeyEncoding
     private let chunkStride: [Int]
@@ -83,6 +83,7 @@ public struct ZarrArray: Sendable {
         self.path = try normalizeZarrPath(path)
         self.metadata = metadata
 
+        let fillValue: ZarrJSONValue?
         let pipeline: CodecPipeline
         let dataType: ZarrDataType
         switch metadata {
@@ -121,6 +122,7 @@ public struct ZarrArray: Sendable {
         }
         let (bytes, overflow) = elements.multipliedReportingOverflow(by: dataType.elementSize)
         guard !overflow, bytes > 0 else { throw ZarrArrayError.invalidMetadata("invalid chunk byte count") }
+        encodedFillValue = try dataType.encodeFillValue(fillValue)
         self.chunkStride = chunkStride
         chunkByteCount = bytes
         codecPipeline = pipeline
@@ -348,7 +350,7 @@ public struct ZarrArray: Sendable {
             let raw = try await storage.read(path: key)
             return try decodeChunk(raw)
         } else {
-            return try fillValueData(for: indices)
+            return fillValueData()
         }
     }
 
@@ -415,143 +417,23 @@ public struct ZarrArray: Sendable {
 
     // MARK: - Private helpers
 
-    private func fillValueData(for indices: [Int]) throws -> Data {
-        let es = dataType.elementSize
-        let byteCount = chunkByteCount
-        if let singleValue = fillValueAsData() {
-            guard singleValue.count == es else {
-                throw ZarrArrayError.invalidDataSize(expected: es, got: singleValue.count)
-            }
-            var result = Data(count: byteCount)
-            result.withUnsafeMutableBytes { dst in
-                guard let dstPtr = dst.baseAddress else { return }
-                singleValue.withUnsafeBytes { src in
-                    guard let srcPtr = src.baseAddress else { return }
-                    // Seed the first element.
-                    dstPtr.copyMemory(from: srcPtr, byteCount: es)
-                    // Doubling copy: filled region doubles each iteration.
-                    var filled = es
-                    while filled < byteCount {
-                        let toCopy = min(filled, byteCount - filled)
-                        dstPtr.advanced(by: filled).copyMemory(from: dstPtr, byteCount: toCopy)
-                        filled += toCopy
-                    }
+    private func fillValueData() -> Data {
+        var result = Data(count: chunkByteCount)
+        result.withUnsafeMutableBytes { destination in
+            encodedFillValue.withUnsafeBytes { source in
+                UnsafeMutableRawBufferPointer(rebasing: destination[..<source.count]).copyMemory(from: source)
+                var filled = source.count
+                while filled < destination.count {
+                    let count = min(filled, destination.count - filled)
+                    let prefix = UnsafeRawBufferPointer(rebasing: destination[..<count])
+                    UnsafeMutableRawBufferPointer(rebasing: destination[filled..<filled + count]).copyMemory(
+                        from: prefix
+                    )
+                    filled += count
                 }
             }
-            return result
         }
-        return Data(repeating: 0, count: byteCount)
-    }
-
-    private func fillValueAsData() -> Data? {
-        guard let fillValue else { return nil }
-        let size = dataType.elementSize
-
-        switch fillValue {
-        case .null:
-            return nil
-        case .string(let string):
-            return fillValueFromString(string, size: size)
-        case .bool(let b):
-            return Data([b ? 1 : 0])
-        case .int(let v):
-            switch dataType.kind {
-            case .int:
-                switch size {
-                case 1: return dataType.data(from: Int8(truncatingIfNeeded: v))
-                case 2: return dataType.data(from: Int16(truncatingIfNeeded: v))
-                case 4: return dataType.data(from: Int32(truncatingIfNeeded: v))
-                case 8: return dataType.data(from: Int64(v))
-                default: return nil
-                }
-            case .uint:
-                switch size {
-                case 1: return dataType.data(from: UInt8(truncatingIfNeeded: v))
-                case 2: return dataType.data(from: UInt16(truncatingIfNeeded: v))
-                case 4: return dataType.data(from: UInt32(truncatingIfNeeded: v))
-                case 8: return dataType.data(from: UInt64(v))
-                default: return nil
-                }
-            case .float:
-                if size == 4 { return dataType.data(from: Float(v)) }
-                return dataType.data(from: Double(v))
-            case .bool:
-                return Data([v == 0 ? 0 : 1])
-            case .complex:
-                return Data(repeating: 0, count: size)
-            }
-        case .double(let v):
-            switch dataType.kind {
-            case .float where size == 4: return dataType.data(from: Float(v))
-            case .float: return dataType.data(from: v)
-            case .int:
-                let iv = Int64(v)
-                switch size {
-                case 1: return dataType.data(from: Int8(truncatingIfNeeded: iv))
-                case 2: return dataType.data(from: Int16(truncatingIfNeeded: iv))
-                case 4: return dataType.data(from: Int32(truncatingIfNeeded: iv))
-                default: return dataType.data(from: iv)
-                }
-            default: return nil
-            }
-        case .array, .object:
-            return nil
-        }
-    }
-
-    private func fillValueFromString(_ string: String, size: Int) -> Data? {
-        switch (dataType.kind, size) {
-        case (.float, 4):
-            let v: Float
-            switch string {
-            case "NaN": v = Float(bitPattern: 0x7fc0_0000)
-            case "Infinity": v = Float.infinity
-            case "-Infinity": v = -Float.infinity
-            default:
-                if string.hasPrefix("0x") || string.hasPrefix("0X"),
-                    let raw = UInt32(string.dropFirst(2), radix: 16)
-                {
-                    v = Float(bitPattern: raw)
-                } else {
-                    return nil
-                }
-            }
-            return dataType.data(from: v)
-        case (.float, 8):
-            let v: Double
-            switch string {
-            case "NaN": v = Double(bitPattern: 0x7ff8_0000_0000_0000)
-            case "Infinity": v = Double.infinity
-            case "-Infinity": v = -Double.infinity
-            default:
-                if string.hasPrefix("0x") || string.hasPrefix("0X"),
-                    let raw = UInt64(string.dropFirst(2), radix: 16)
-                {
-                    v = Double(bitPattern: raw)
-                } else {
-                    return nil
-                }
-            }
-            return dataType.data(from: v)
-        case (.int, let s) where s <= 8:
-            guard let raw = Int64(string) else { return nil }
-            switch s {
-            case 1: return dataType.data(from: Int8(truncatingIfNeeded: raw))
-            case 2: return dataType.data(from: Int16(truncatingIfNeeded: raw))
-            case 4: return dataType.data(from: Int32(truncatingIfNeeded: raw))
-            default: return dataType.data(from: raw)
-            }
-        case (.uint, let s) where s <= 8:
-            guard let raw = UInt64(string) else { return nil }
-            switch s {
-            case 1: return dataType.data(from: UInt8(truncatingIfNeeded: raw))
-            case 2: return dataType.data(from: UInt16(truncatingIfNeeded: raw))
-            case 4: return dataType.data(from: UInt32(truncatingIfNeeded: raw))
-            default: return dataType.data(from: raw)
-            }
-        default:
-            return string.data(using: .utf8)
-        }
+        return result
     }
 
     /// Collect all chunk indices within the given ranges (one range per dimension).

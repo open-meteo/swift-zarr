@@ -129,6 +129,7 @@ public struct V2Attrs: Codable, Sendable {
 public enum ZarrJSONValue: Codable, Sendable, Equatable {
     case null
     case int(Int)
+    case uint(UInt64)
     case double(Double)
     case string(String)
     case bool(Bool)
@@ -136,7 +137,19 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
     case object([String: ZarrJSONValue])
 
     public var intValue: Int? {
-        if case .int(let v) = self { v } else { nil }
+        switch self {
+        case .int(let value): value
+        case .uint(let value): Int(exactly: value)
+        default: nil
+        }
+    }
+
+    public var uintValue: UInt64? {
+        switch self {
+        case .uint(let value): value
+        case .int(let value): UInt64(exactly: value)
+        default: nil
+        }
     }
 
     public var doubleValue: Double? {
@@ -165,7 +178,14 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
             // silently corrupt boolean fill values.
             self = .bool(boolVal)
         } else if let intVal = try? container.decode(Int.self) {
-            self = .int(intVal)
+            // JSONDecoder also accepts -0.0 as Int(0); preserve its sign.
+            if intVal == 0, let number = try? container.decode(Double.self), number.sign == .minus {
+                self = .double(number)
+            } else {
+                self = .int(intVal)
+            }
+        } else if let uintVal = try? container.decode(UInt64.self) {
+            self = .uint(uintVal)
         } else if let doubleVal = try? container.decode(Double.self) {
             self = .double(doubleVal)
         } else if let stringVal = try? container.decode(String.self) {
@@ -182,6 +202,7 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
         switch self {
         case .null: try container.encodeNil()
         case .int(let v): try container.encode(v)
+        case .uint(let v): try container.encode(v)
         case .double(let v): try container.encode(v)
         case .string(let v): try container.encode(v)
         case .bool(let v): try container.encode(v)
