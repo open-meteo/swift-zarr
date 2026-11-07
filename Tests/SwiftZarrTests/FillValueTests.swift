@@ -7,6 +7,7 @@ import Testing
     ("|u1", "-1"), ("|u1", "256"), ("|i1", "128"), ("<i8", "18446744073709551615"),
     ("<u8", "18446744073709551616"), ("<i4", "1.5"), ("<i4", "true"),
     ("<f4", "1e300"), ("<f8", "{}"), ("<f8", "\"unknown\""), ("|b1", "2"),
+    (">c8", "[1,-2]"), (">c8", "null"),
 ])
 func testRejectInvalidFills(dtype: String, fill: String) throws {
     let json = #"{"zarr_format":2,"shape":[1],"chunks":[1],"order":"C","dtype":"\#(dtype)","fill_value":\#(fill)}"#
@@ -17,10 +18,7 @@ func testRejectInvalidFills(dtype: String, fill: String) throws {
 }
 
 @Test
-func testComplexAndHalfPrecisionFillEncoding() throws {
-    let complex = try ZarrDataType.parse(">c8")
-    #expect(try complex.encodeFillValue(.array([.int(1), .int(-2)])) == Data([0x3f, 0x80, 0, 0, 0xc0, 0, 0, 0]))
-    #expect(throws: ZarrArrayError.self) { try complex.encodeFillValue(.array([.int(1)])) }
+func testHalfPrecisionFillEncoding() throws {
     let half = try ZarrDataType.parse(">f2")
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     #expect(try half.encodeFillValue(.double(-0.0)) == Data([0x80, 0]))

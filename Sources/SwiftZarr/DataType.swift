@@ -91,6 +91,9 @@ internal let isLittleEndian: Bool = {
 // successful conversion returns exactly one element in its storage byte order.
 extension ZarrDataType {
     internal func encodeFillValue(_ value: ZarrJSONValue?) throws -> Data {
+        guard kind != .complex else {
+            throw ZarrArrayError.invalidMetadata("complex fill values are unsupported")
+        }
         guard let value, value != .null else { return Data(count: size) }
         switch (kind, size) {
         case (.int, 1): return try data(from: integerFill(value, as: Int8.self))
@@ -133,10 +136,6 @@ extension ZarrDataType {
             case 8: return try data(from: floatingFill(value, as: Double.self))
             default: throw invalidFill()
             }
-        case (.complex, _):
-            guard case .array(let parts) = value, parts.count == 2, !parts.contains(.null) else { throw invalidFill() }
-            let component = ZarrDataType(endian: endian, kind: .float, size: size / 2)
-            return try component.encodeFillValue(parts[0]) + component.encodeFillValue(parts[1])
         default: throw invalidFill()
         }
     }
