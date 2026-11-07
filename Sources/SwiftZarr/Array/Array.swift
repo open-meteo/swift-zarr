@@ -88,28 +88,56 @@ public struct ZarrArray: Sendable {
         let dataType: ZarrDataType
         switch metadata {
         case .v2(let meta):
+            guard meta.zarrFormat == 2 else { throw ZarrArrayError.invalidMetadata("expected zarr_format 2") }
+            if let separator = meta.dimensionSeparator, separator != "." && separator != "/" {
+                throw ZarrArrayError.invalidChunkKeySeparator(separator)
+            }
             version = .v2
             dataType = try ZarrDataType.parse(meta.dtype)
             pipeline = try CodecPipeline(v2: meta, dataType: dataType)
             chunkKeyEncoding = .v2(separator: meta.dimensionSeparator ?? ".")
-            shape = meta.shape.map(Int.init)
-            chunkShape = meta.chunks.map(Int.init)
+            shape = try Self.checkedDimensions(meta.shape)
+            chunkShape = try Self.checkedDimensions(meta.chunks)
             orderIsF = meta.order == .F
             fillValue = meta.fillValue
         case .v3(let meta):
+            guard meta.zarrFormat == 3, meta.nodeType == "array" else {
+                throw ZarrArrayError.invalidMetadata("expected a V3 array")
+            }
+            guard meta.chunkGrid.name == "regular" else {
+                throw ZarrArrayError.invalidMetadata("unsupported chunk grid: \(meta.chunkGrid.name)")
+            }
+            guard meta.storageTransformers?.isEmpty != false else {
+                throw ZarrArrayError.invalidMetadata("storage transformers are unsupported")
+            }
+            if let names = meta.dimensionNames, names.count != meta.shape.count {
+                throw ZarrArrayError.invalidMetadata("dimension_names rank does not match shape")
+            }
             version = .v3
             let parsed = try ZarrDataType.parseV3(meta.dataType)
             pipeline = try CodecPipeline(v3: meta.codecs ?? [], dataType: parsed)
             dataType = ZarrDataType(endian: pipeline.serializer.endian, kind: parsed.kind, size: parsed.size)
             chunkKeyEncoding = try ChunkKeyEncoding(v3: meta.chunkKeyEncoding)
-            shape = meta.shape.map(Int.init)
-            chunkShape = meta.chunkGrid.configuration.chunkShape.map(Int.init)
+            shape = try Self.checkedDimensions(meta.shape)
+            chunkShape = try Self.checkedDimensions(meta.chunkGrid.configuration.chunkShape)
             orderIsF = false
             fillValue = meta.fillValue
         }
 
         self.dataType = dataType
-        numChunks = zip(shape, chunkShape).map { size, chunk in (size + chunk - 1) / chunk }
+        guard shape.count == chunkShape.count, chunkShape.allSatisfy({ $0 > 0 }) else {
+            throw ZarrArrayError.invalidMetadata("chunk dimensions must be positive and match the array rank")
+        }
+        // totalElements is an Int, but a subset's byte count is checked when requested.
+        if !shape.contains(0) {
+            var elements = 1
+            for size in shape {
+                let (product, overflow) = elements.multipliedReportingOverflow(by: size)
+                guard !overflow else { throw ZarrArrayError.invalidMetadata("array element count overflows Int") }
+                elements = product
+            }
+        }
+        numChunks = zip(shape, chunkShape).map { size, chunk in size / chunk + (size % chunk == 0 ? 0 : 1) }
         var chunkStride = [Int](repeating: 1, count: chunkShape.count)
         var elements = 1
         let dimensions =
@@ -127,6 +155,15 @@ public struct ZarrArray: Sendable {
         chunkByteCount = bytes
         codecPipeline = pipeline
         concurrentLimit = max(4, ProcessInfo.processInfo.activeProcessorCount)
+    }
+
+    private static func checkedDimensions(_ dimensions: [UInt64]) throws -> [Int] {
+        try dimensions.map { value in
+            guard let size = Int(exactly: value) else {
+                throw ZarrArrayError.invalidMetadata("dimension is not representable as Int")
+            }
+            return size
+        }
     }
 
     /// Create an array from in-memory V2 metadata without reading from storage.
@@ -148,7 +185,7 @@ public struct ZarrArray: Sendable {
     public func chunkGridShape() -> [Int] { numChunks }
 
     public var totalElements: Int {
-        shape.reduce(1, *)
+        shape.contains(0) ? 0 : shape.reduce(1, *)
     }
 
     /// Shape of the chunk intersection with array bounds. Stored chunks always use `chunkShape`.

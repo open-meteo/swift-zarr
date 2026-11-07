@@ -3,6 +3,10 @@ import Foundation
 public struct V2GroupMetadata: Codable, Sendable {
     public let zarrFormat: Int
 
+    public init(zarrFormat: Int = 2) {
+        self.zarrFormat = zarrFormat
+    }
+
     enum CodingKeys: String, CodingKey {
         case zarrFormat = "zarr_format"
     }
@@ -33,15 +37,15 @@ public struct V2ArrayMetadata: Codable, Sendable {
     }
 
     public init(
-        zarrFormat: Int,
+        zarrFormat: Int = 2,
         shape: [UInt64],
         chunks: [UInt64],
         dtype: String,
-        compressor: [String: ZarrJSONValue]?,
-        fillValue: ZarrJSONValue?,
+        compressor: [String: ZarrJSONValue]? = nil,
+        fillValue: ZarrJSONValue? = nil,
         order: Order? = nil,
-        filters: [[String: ZarrJSONValue]]?,
-        dimensionSeparator: String?
+        filters: [[String: ZarrJSONValue]]? = nil,
+        dimensionSeparator: String? = nil
     ) {
         self.zarrFormat = zarrFormat
         self.shape = shape
