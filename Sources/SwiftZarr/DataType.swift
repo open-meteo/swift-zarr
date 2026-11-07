@@ -36,6 +36,14 @@ public struct ZarrDataType: Sendable, Equatable {
         else {
             throw ZarrDataTypeError.invalidDtype(dtype)
         }
+        let validWidths: [Int]
+        switch kind {
+        case .bool: validWidths = [1]
+        case .int, .uint: validWidths = [1, 2, 4, 8]
+        case .float: validWidths = [2, 4, 8]
+        case .complex: validWidths = [8, 16]
+        }
+        guard validWidths.contains(size) else { throw ZarrDataTypeError.invalidDtype(dtype) }
         return ZarrDataType(endian: endian, kind: kind, size: size)
     }
 
