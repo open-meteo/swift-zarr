@@ -12,7 +12,7 @@ func createTempDir() throws -> String {
     return tmp.path
 }
 
-/// Extract a chunk from a flat C-order array.
+/// Extract a nominal-size C-order chunk, padding outside the array bounds with zero.
 func extractChunk(
     from flatData: Data,
     arrayShape: [Int],
@@ -22,19 +22,17 @@ func extractChunk(
 ) -> Data {
     let ndim = arrayShape.count
     var chunkStart = [Int](repeating: 0, count: ndim)
-    var actualChunkShape = [Int](repeating: 0, count: ndim)
     for d in 0..<ndim {
         chunkStart[d] = chunkIndices[d] * chunkShape[d]
-        actualChunkShape[d] = chunkShape[d]
     }
-    let chunkElements = actualChunkShape.reduce(1, *)
+    let chunkElements = chunkShape.reduce(1, *)
     var chunkData = Data(count: chunkElements * elementSize)
 
     var chunkStride = [Int](repeating: 0, count: ndim)
     var s = 1
     for d in (0..<ndim).reversed() {
         chunkStride[d] = s
-        s *= actualChunkShape[d]
+        s *= chunkShape[d]
     }
 
     var arrayStride = [Int](repeating: 0, count: ndim)

@@ -63,17 +63,16 @@ public final class LocalFileStorage: Storage {
 
     public func list(prefix: String) async throws -> [String] {
         let url = baseURL.appendingPathComponent(prefix)
-        guard
-            let enumerator = FileManager.default.enumerator(
-                at: url,
-                includingPropertiesForKeys: nil
-            )
-        else {
+        guard let enumerator = FileManager.default.enumerator(atPath: url.path) else {
             return []
         }
-        let basePath = url.path + "/"
-        return enumerator.compactMap { ($0 as? URL)?.path }
-            .map { String($0.dropFirst(basePath.count)) }
+        return try enumerator.compactMap { entry -> String? in
+            guard let relativePath = entry as? String else { return nil }
+            let fileURL = url.appendingPathComponent(relativePath)
+            let values = try fileURL.resourceValues(forKeys: [.isDirectoryKey])
+            guard values.isDirectory != true else { return nil }
+            return relativePath
+        }
     }
 
     public func listDir(prefix: String) async throws -> [String] {
