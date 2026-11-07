@@ -1,12 +1,11 @@
 import Foundation
-@preconcurrency import SWCompression
+import SWCompression
 
 public struct BZip2Codec: Codec {
-    private let blockSize: BZip2.BlockSize
+    private let level: Int
 
     public init(level: Int = 5) {
-        let clamped = max(1, min(level, 9))
-        self.blockSize = BZip2.BlockSize(rawValue: clamped) ?? .five
+        self.level = level
     }
 
     public func decode(_ data: Data) throws -> Data {
@@ -15,6 +14,9 @@ public struct BZip2Codec: Codec {
     }
 
     public func encode(_ data: Data) throws -> Data {
+        guard let blockSize = BZip2.BlockSize(rawValue: level) else {
+            throw CodecError.encodeFailed("bzip2 level must be in 1...9")
+        }
         let bytes = BZip2.compress(data: data, blockSize: blockSize)
         return Data(bytes)
     }
