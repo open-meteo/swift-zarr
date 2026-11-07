@@ -128,7 +128,7 @@ public struct V2Attrs: Codable, Sendable {
 
 public enum ZarrJSONValue: Codable, Sendable, Equatable {
     case null
-    case int(Int)
+    case int(Int64)
     case uint(UInt64)
     case double(Double)
     case string(String)
@@ -138,7 +138,7 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
 
     public var intValue: Int? {
         switch self {
-        case .int(let value): value
+        case .int(let value): Int(exactly: value)
         case .uint(let value): Int(exactly: value)
         default: nil
         }
@@ -177,8 +177,8 @@ public enum ZarrJSONValue: Codable, Sendable, Equatable {
             // decode JSON `true`/`false` as Int (yielding 1/0), which would
             // silently corrupt boolean fill values.
             self = .bool(boolVal)
-        } else if let intVal = try? container.decode(Int.self) {
-            // JSONDecoder also accepts -0.0 as Int(0); preserve its sign.
+        } else if let intVal = try? container.decode(Int64.self) {
+            // JSONDecoder also accepts -0.0 as Int64(0); preserve its sign.
             if intVal == 0, let number = try? container.decode(Double.self), number.sign == .minus {
                 self = .double(number)
             } else {

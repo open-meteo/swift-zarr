@@ -55,3 +55,12 @@ func testUnsignedJSONIntegersRemainExact() throws {
     #expect(value.intValue == nil)
     #expect(try JSONEncoder().encode(value) == source)
 }
+
+@Test(arguments: [Int64.min, Int64.max])
+func testSignedJSONIntegersRemainExact(number: Int64) throws {
+    let source = Data(String(number).utf8)
+    let value = try JSONDecoder().decode(ZarrJSONValue.self, from: source)
+    #expect(value == .int(number))
+    #expect(value.intValue == Int(exactly: number))
+    #expect(try JSONEncoder().encode(value) == source)
+}
