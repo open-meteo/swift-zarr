@@ -59,22 +59,6 @@ let t2m = try await group.openArray(name: "2m_temperature")
 let slice: [Float] = try await t2m.retrieveArraySubset([0..<10, 0..<64, 0..<8])
 ```
 
-Create an array from metadata, then save it explicitly. Array initialization validates
-dimensions, supported metadata, and codec configuration:
-
-```swift
-let localStorage = LocalFileStorage(basePath: "/path/to/store")
-let metadata = V3ArrayMetadata(
-    shape: [100],
-    dataType: "float32",
-    chunkGrid: .init(configuration: .init(chunkShape: [20])),
-    fillValue: .int(0),
-    codecs: [.init(name: "bytes", configuration: ["endian": .string("little")])]
-)
-let array = try ZarrArray(metadata: metadata, storage: localStorage, path: "example")
-try await array.storeMetadata()
-```
-
 Group attributes are editable local snapshots for both V2 and V3. Save edits explicitly:
 
 ```swift
