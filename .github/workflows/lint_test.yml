@@ -12,7 +12,7 @@ jobs:
       matrix:
         include:
           - swift: "6.2"
-            os: macos-15
+            os: macos-26
           - swift: "6.3"
             os: macos-26
           - swift: "6.2"
