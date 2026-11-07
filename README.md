@@ -77,10 +77,6 @@ swift build
 swift test
 ```
 
-Float16 typed reads and fill values are supported where Swift provides `Float16`,
-including Apple silicon macOS and Linux. Swift does not provide `Float16` on
-Intel macOS.
-
 ## TODO
 
 - V2 filter support (nonempty filter chains are currently rejected)
