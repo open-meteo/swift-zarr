@@ -1,6 +1,6 @@
-import CBlosc
 import Foundation
 import Testing
+import libzstd
 
 @testable import SwiftZarr
 

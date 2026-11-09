@@ -14,11 +14,7 @@ endian, nominal-size edge chunks, V3 slash/dot and V2-style keys,
 missing chunks, scalars, and nullable dimension names.
 
 Codec fixtures cover Blosc shuffle modes, auto-shuffle, typesize and block size,
-LZ4, gzip, zlib, zstd, and bzip2, including different compression levels.
-Zstd covers V2/V3 stores with checksums enabled and disabled, using a negative
-level for V2 and the default level for V3. Blosc-zstd covers V2 byte shuffle
-and V3 bit shuffle; the generator verifies that the first chunk actually uses
-compression.
+LZ4, gzip, zlib, zstd, and bzip2, with varied compression levels and zstd checksums.
 
 Most data arrays have shape `[3, 5]` and chunks `[2, 3]`; Blosc shuffle cases
 use shape `[9, 9]` and chunks `[8, 8]`, and Blosc block-size cases use shape

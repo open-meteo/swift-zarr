@@ -1,5 +1,5 @@
-import CBlosc
 import Foundation
+import libzstd
 
 /// Zstandard frames used by both V2 and V3 arrays.
 public struct ZstdCodec: Codec {
