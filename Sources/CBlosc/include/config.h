@@ -1,6 +1,6 @@
 #ifndef CBLOSC_CONFIG_H
 #define CBLOSC_CONFIG_H
 
-#define HAVE_LZ4 1
+// Compressor availability is configured by Package.swift for every C translation unit.
 
 #endif

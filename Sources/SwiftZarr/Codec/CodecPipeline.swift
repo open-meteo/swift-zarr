@@ -81,10 +81,13 @@ internal struct CodecPipeline: Sendable {
                 throw ZarrArrayError.invalidCodecConfiguration("zstd: invalid level or checksum")
             }
             return ZstdCodec(level: level, checksum: checksum)
-        case "gzip":
-            return GzipCodec()
-        case "zlib":
-            return ZlibCodec()
+        case "gzip", "zlib":
+            guard let level = (codec.configuration?["level"] ?? .int(6)).intValue,
+                (0...9).contains(level)
+            else {
+                throw ZarrArrayError.invalidCodecConfiguration("\(name): level must be in 0...9")
+            }
+            return name == "gzip" ? GzipCodec(level: level) : ZlibCodec(level: level)
         case "bz2":
             let level = codec.configuration?["level"]?.intValue ?? 5
             return BZip2Codec(level: level)

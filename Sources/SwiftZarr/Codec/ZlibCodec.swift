@@ -1,16 +1,17 @@
 import Foundation
-import SWCompression
 
 public struct ZlibCodec: Codec {
-    public init() {}
+    private let level: Int
+
+    public init(level: Int = 6) {
+        self.level = level
+    }
 
     public func decode(_ data: Data) throws -> Data {
-        let bytes = try ZlibArchive.unarchive(archive: data)
-        return Data(bytes)
+        try DeflateCodec.decode(data, windowBits: 15)
     }
 
     public func encode(_ data: Data) throws -> Data {
-        let bytes = ZlibArchive.archive(data: data)
-        return Data(bytes)
+        try DeflateCodec.encode(data, windowBits: 15, level: level)
     }
 }

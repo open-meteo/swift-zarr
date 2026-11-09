@@ -1,16 +1,17 @@
 import Foundation
-import SWCompression
 
 public struct GzipCodec: Codec {
-    public init() {}
+    private let level: Int
+
+    public init(level: Int = 6) {
+        self.level = level
+    }
 
     public func decode(_ data: Data) throws -> Data {
-        let bytes = try GzipArchive.unarchive(archive: data)
-        return Data(bytes)
+        try DeflateCodec.decode(data, windowBits: 31)
     }
 
     public func encode(_ data: Data) throws -> Data {
-        let bytes = try GzipArchive.archive(data: data)
-        return Data(bytes)
+        try DeflateCodec.encode(data, windowBits: 31, level: level)
     }
 }
