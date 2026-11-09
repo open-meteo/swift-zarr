@@ -33,6 +33,7 @@ public enum StorageError: Error {
 
 public protocol Storage: Sendable {
     /// Read the full contents of a blob at the given path.
+    /// Throw `StorageError.noSuchFile` if the blob does not exist.
     func read(path: String) async throws -> Data
 
     /// Write data to a blob at the given path, creating intermediate directories as needed.
@@ -50,4 +51,15 @@ public protocol Storage: Sendable {
 
     /// Delete a blob at the given path.
     func delete(path: String) async throws
+}
+
+extension Storage {
+    /// Read once, treating only a missing blob as absence.
+    internal func readIfExists(path: String) async throws -> Data? {
+        do {
+            return try await read(path: path)
+        } catch StorageError.noSuchFile {
+            return nil
+        }
+    }
 }

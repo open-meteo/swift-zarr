@@ -68,8 +68,7 @@ public struct ZarrArray: Sendable {
         let normalizedPath = try normalizeZarrPath(path)
         let decoder = JSONDecoder()
         let metadata: ZarrArrayMetadata
-        if try await storage.exists(path: zarrKey(normalizedPath, "zarr.json")) {
-            let data = try await storage.read(path: zarrKey(normalizedPath, "zarr.json"))
+        if let data = try await storage.readIfExists(path: zarrKey(normalizedPath, "zarr.json")) {
             metadata = .v3(try decoder.decode(V3ArrayMetadata.self, from: data))
         } else {
             let data = try await storage.read(path: zarrKey(normalizedPath, ".zarray"))
@@ -232,8 +231,7 @@ public struct ZarrArray: Sendable {
         try validateElementType(T.self)
         try validateIndices(indices)
         let key = zarrKey(path, chunkKey(indices))
-        guard try await storage.exists(path: key) else { return nil }
-        let raw = try await storage.read(path: key)
+        guard let raw = try await storage.readIfExists(path: key) else { return nil }
         let data = try decodeChunk(raw)
         return try T.decode(data, endian: dataType.endian)
     }
@@ -392,8 +390,7 @@ public struct ZarrArray: Sendable {
     internal func readChunkRaw(_ indices: [Int]) async throws -> Data {
         try validateIndices(indices)
         let key = zarrKey(path, chunkKey(indices))
-        if try await storage.exists(path: key) {
-            let raw = try await storage.read(path: key)
+        if let raw = try await storage.readIfExists(path: key) {
             return try decodeChunk(raw)
         } else {
             return fillValueData()
