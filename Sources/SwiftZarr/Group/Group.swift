@@ -54,8 +54,7 @@ public struct ZarrGroup: Sendable {
         let normalizedPath = try normalizeZarrPath(path)
         let decoder = JSONDecoder()
         let metadata: ZarrGroupMetadata
-        if try await storage.exists(path: zarrKey(normalizedPath, "zarr.json")) {
-            let data = try await storage.read(path: zarrKey(normalizedPath, "zarr.json"))
+        if let data = try await storage.readIfExists(path: zarrKey(normalizedPath, "zarr.json")) {
             metadata = .v3(try decoder.decode(V3GroupMetadata.self, from: data))
         } else {
             let data = try await storage.read(path: zarrKey(normalizedPath, ".zgroup"))
@@ -64,8 +63,7 @@ public struct ZarrGroup: Sendable {
         try self.init(metadata: metadata, storage: storage, path: path)
         if case .v2 = metadata {
             let attrsPath = zarrKey(normalizedPath, ".zattrs")
-            if try await storage.exists(path: attrsPath) {
-                let data = try await storage.read(path: attrsPath)
+            if let data = try await storage.readIfExists(path: attrsPath) {
                 attributes = try decoder.decode(V2Attrs.self, from: data).values
             }
         }
@@ -133,8 +131,7 @@ public struct ZarrGroup: Sendable {
             for name in childNames {
                 group.addTask { [storage, path] in
                     let childPath = try normalizeZarrPath(zarrKey(path, name))
-                    if try await storage.exists(path: zarrKey(childPath, "zarr.json")) {
-                        let data = try await storage.read(path: zarrKey(childPath, "zarr.json"))
+                    if let data = try await storage.readIfExists(path: zarrKey(childPath, "zarr.json")) {
                         let node = try JSONDecoder().decode(V3NodeType.self, from: data)
                         return node.nodeType == "group" ? .group(name) : .array(name)
                     }

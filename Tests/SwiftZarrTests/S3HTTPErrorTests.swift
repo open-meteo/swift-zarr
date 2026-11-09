@@ -3,28 +3,45 @@ import NIOCore
 import NIOHTTP1
 import NIOPosix
 import SwiftZarr
+import Synchronization
 import Testing
+
+private final class RequestLog: Sendable {
+    private let methods = Mutex<[String]>([])
+
+    func append(_ method: String) { methods.withLock { $0.append(method) } }
+    var snapshot: [String] { methods.withLock { $0 } }
+}
 
 private final class ChunkStatusHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = HTTPServerRequestPart
     typealias OutboundOut = HTTPServerResponsePart
 
     let status: HTTPResponseStatus
+    let requests: RequestLog
 
-    init(status: HTTPResponseStatus) { self.status = status }
+    init(status: HTTPResponseStatus, requests: RequestLog) {
+        self.status = status
+        self.requests = requests
+    }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         switch unwrapInboundIn(data) {
         case .head(let request):
-            #expect(request.method == .HEAD)
+            requests.append(request.method.rawValue)
+            #expect(request.method == .GET)
             #expect(request.uri == "/array/0")
         case .end:
+            let body: [UInt8] = status.code == 200 ? [1, 0, 0, 0, 2, 0, 0, 0] : []
             let head = HTTPResponseHead(
                 version: .http1_1,
                 status: status,
-                headers: HTTPHeaders([("Content-Length", "0"), ("Connection", "close")])
+                headers: HTTPHeaders([("Content-Length", String(body.count)), ("Connection", "close")])
             )
             context.write(wrapOutboundOut(.head(head)), promise: nil)
+            if !body.isEmpty {
+                context.write(wrapOutboundOut(.body(.byteBuffer(ByteBuffer(bytes: body)))), promise: nil)
+            }
             context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: nil)
         case .body:
             Issue.record("Unexpected request body")
@@ -32,14 +49,15 @@ private final class ChunkStatusHandler: ChannelInboundHandler, Sendable {
     }
 }
 
-@Test(arguments: [400, 403, 404])
+@Test(arguments: [200, 400, 403, 404])
 func testS3ChunkHTTPStatus(code: Int) async throws {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    let requests = RequestLog()
     do {
         let server = try await ServerBootstrap(group: group)
             .childChannelInitializer { channel in
                 channel.pipeline.configureHTTPServerPipeline().flatMap {
-                    channel.pipeline.addHandler(ChunkStatusHandler(status: .init(statusCode: code)))
+                    channel.pipeline.addHandler(ChunkStatusHandler(status: .init(statusCode: code), requests: requests))
                 }
             }
             .bind(host: "127.0.0.1", port: 0).get()
@@ -51,7 +69,13 @@ func testS3ChunkHTTPStatus(code: Int) async throws {
                 storage: storage,
                 path: "array"
             )
-            if code == 404 {
+            if code == 200 {
+                let values: [Int32] = try await array.retrieveChunk([0])
+                #expect(values == [1, 2])
+                #expect(requests.snapshot == ["GET"])
+                let optional: [Int32]? = try await array.retrieveChunkIfExists([0])
+                #expect(optional == [1, 2])
+            } else if code == 404 {
                 let values: [Int32] = try await array.retrieveChunk([0])
                 #expect(values == [7, 7])
                 let missing: [Int32]? = try await array.retrieveChunkIfExists([0])
@@ -72,6 +96,7 @@ func testS3ChunkHTTPStatus(code: Int) async throws {
                     #expect(path == "array/0")
                 }
             }
+            #expect(requests.snapshot == ["GET", "GET"])
         } catch {
             try await server.close().get()
             throw error
