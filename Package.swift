@@ -19,6 +19,9 @@ let package = Package(
         .target(
             name: "CBlosc",
             sources: [
+                "deps/c-blosc/internal-complibs/zstd-1.5.6/common",
+                "deps/c-blosc/internal-complibs/zstd-1.5.6/compress",
+                "deps/c-blosc/internal-complibs/zstd-1.5.6/decompress",
                 "deps/c-blosc/blosc/blosc.c",
                 "deps/c-blosc/blosc/blosclz.c",
                 "deps/c-blosc/blosc/shuffle.c",
@@ -34,6 +37,8 @@ let package = Package(
             ],
             cSettings: [
                 .define("HAVE_LZ4"),
+                .define("HAVE_ZSTD"),
+                .headerSearchPath("deps/c-blosc/internal-complibs/zstd-1.5.6"),
                 .headerSearchPath("deps/c-blosc/blosc"),
                 .headerSearchPath("deps/c-blosc/internal-complibs/lz4-1.10.0"),
                 .headerSearchPath("include"),

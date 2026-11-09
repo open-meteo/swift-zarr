@@ -72,6 +72,15 @@ internal struct CodecPipeline: Sendable {
     {
         let name = codec.shortName
         switch name {
+        case "zstd":
+            let config = codec.configuration ?? [:]
+            guard let level = (config["level"] ?? .int(0)).intValue,
+                ZstdCodec.validLevel(level),
+                let checksum = (config["checksum"] ?? .bool(false)).boolValue
+            else {
+                throw ZarrArrayError.invalidCodecConfiguration("zstd: invalid level or checksum")
+            }
+            return ZstdCodec(level: level, checksum: checksum)
         case "gzip":
             return GzipCodec()
         case "zlib":
