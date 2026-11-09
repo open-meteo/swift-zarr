@@ -42,7 +42,7 @@ func testDeflatePipelineLevel(name: String) throws {
     }
 }
 
-@Test(arguments: [Int.min, -1, 10, Int.max])
+@Test(arguments: [Int.min, -2, 10, Int.max])
 func testDeflateRejectsInvalidLevel(level: Int) {
     #expect(throws: CodecError.self) { try GzipCodec(level: level).encode(Data()) }
     #expect(throws: CodecError.self) { try ZlibCodec(level: level).encode(Data()) }
@@ -59,4 +59,28 @@ func testBloscCompiledCompressors() throws {
         #expect(encoded.count < data.count)
         #expect(try codec.decode(encoded) == data)
     }
+}
+
+@Test
+func testV2ZlibDefaultCompressionLevel() async throws {
+    let directory = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    let storage = LocalFileStorage(basePath: directory)
+    let metadata = V2ArrayMetadata(
+        shape: [8],
+        chunks: [8],
+        dtype: "|u1",
+        compressor: ["id": .string("zlib"), "level": .int(-1)]
+    )
+    let array = try ZarrArray(metadata: metadata, storage: storage, path: "")
+    let values: [UInt8] = Array(0..<8)
+    try await array.storeMetadata()
+    try await array.storeChunk([0], data: Data(values))
+    let encoded = try await storage.read(path: array.chunkKey([0]))
+    #expect(try Data(ZlibArchive.unarchive(archive: encoded)) == Data(values))
+    #expect(try ZlibCodec(level: -1).encode(Data(values)) == encoded)
+    let reopened = try await ZarrArray(storage: storage, path: "")
+    let decoded: [UInt8] = try await reopened.retrieveChunk([0])
+    #expect(decoded == values)
+    #expect(throws: CodecError.self) { try GzipCodec(level: -1).encode(Data()) }
 }

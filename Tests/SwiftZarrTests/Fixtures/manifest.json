@@ -1399,6 +1399,36 @@
     "buffers": []
   },
   {
+    "name": "v2-zlib-default",
+    "shape": [
+      3,
+      5
+    ],
+    "chunks": [
+      2,
+      3
+    ],
+    "values": [
+      -11,
+      6,
+      23,
+      40,
+      57,
+      74,
+      91,
+      108,
+      125,
+      142,
+      159,
+      176,
+      193,
+      210,
+      227
+    ],
+    "bigEndian": false,
+    "buffers": []
+  },
+  {
     "name": "v2-zlib-1",
     "shape": [
       3,

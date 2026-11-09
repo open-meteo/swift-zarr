@@ -82,10 +82,11 @@ internal struct CodecPipeline: Sendable {
             }
             return ZstdCodec(level: level, checksum: checksum)
         case "gzip", "zlib":
+            let minimumLevel = name == "zlib" && version == .v2 ? -1 : 0
             guard let level = (codec.configuration?["level"] ?? .int(6)).intValue,
-                (0...9).contains(level)
+                (minimumLevel...9).contains(level)
             else {
-                throw ZarrArrayError.invalidCodecConfiguration("\(name): level must be in 0...9")
+                throw ZarrArrayError.invalidCodecConfiguration("\(name): level must be in \(minimumLevel)...9")
             }
             return name == "gzip" ? GzipCodec(level: level) : ZlibCodec(level: level)
         case "bz2":

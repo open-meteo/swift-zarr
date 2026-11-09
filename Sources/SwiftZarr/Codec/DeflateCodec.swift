@@ -4,8 +4,9 @@ import Foundation
 /// Shared implementation for gzip and zlib framing.
 internal enum DeflateCodec {
     static func encode(_ data: Data, windowBits: CInt, level: Int) throws -> Data {
-        guard (0...9).contains(level) else {
-            throw CodecError.encodeFailed("compression level must be in 0...9")
+        let minimumLevel = windowBits == 15 ? -1 : 0
+        guard (minimumLevel...9).contains(level) else {
+            throw CodecError.encodeFailed("compression level must be in \(minimumLevel)...9")
         }
         var stream = z_stream()
         let initialized = deflateInit2_(
