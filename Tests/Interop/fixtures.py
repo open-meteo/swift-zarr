@@ -34,6 +34,7 @@ for mode, shuffle in [("none", 0), ("byte", 1), ("bit", 2)]:
         compressors=[BloscCodec(cname="lz4", clevel=1, shuffle=["noshuffle", "shuffle", "bitshuffle"][shuffle], typesize=4)])
 CASES["v3-blosc-blocks"] = dict(zarr_format=3, dtype="int32", serializer=BytesCodec(endian="little"),
     compressors=[BloscCodec(cname="lz4hc", clevel=9, shuffle="bitshuffle", typesize=8, blocksize=256)])
+CASES["v2-zlib-default"] = dict(zarr_format=2, dtype="<i4", compressors=numcodecs.Zlib(level=-1))
 for level in (1, 9):
     CASES[f"v2-zlib-{level}"] = dict(zarr_format=2, dtype="<i4", compressors=numcodecs.Zlib(level=level))
     CASES[f"v2-bz2-{level}"] = dict(zarr_format=2, dtype="<i4", compressors=numcodecs.BZ2(level=level))
