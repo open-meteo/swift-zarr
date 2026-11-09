@@ -1204,7 +1204,7 @@ func testBloscLZ4HCWorks() async throws {
 func testBloscUnsupportedCnameFails() async throws {
     let original = int32LERange(100)
     #expect(throws: BloscError.self) {
-        try BloscCodec(compressorName: "zstd").encode(original)
+        try BloscCodec(compressorName: "unsupported").encode(original)
     }
 }
 

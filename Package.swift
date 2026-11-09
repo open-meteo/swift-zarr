@@ -16,8 +16,16 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-log", from: "1.0.0"),
     ],
     targets: [
+        // Match the vendored module name so Clang does not import zstd while compiling itself.
+        .target(
+            name: "libzstd",
+            path: "Sources/CBlosc/deps/c-blosc/internal-complibs/zstd-1.5.6",
+            sources: ["common", "compress", "decompress"],
+            publicHeadersPath: "."
+        ),
         .target(
             name: "CBlosc",
+            dependencies: ["libzstd"],
             sources: [
                 "deps/c-blosc/blosc/blosc.c",
                 "deps/c-blosc/blosc/blosclz.c",
@@ -34,6 +42,7 @@ let package = Package(
             ],
             cSettings: [
                 .define("HAVE_LZ4"),
+                .define("HAVE_ZSTD"),
                 .headerSearchPath("deps/c-blosc/blosc"),
                 .headerSearchPath("deps/c-blosc/internal-complibs/lz4-1.10.0"),
                 .headerSearchPath("include"),
@@ -46,6 +55,7 @@ let package = Package(
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "Logging", package: "swift-log"),
                 "CBlosc",
+                "libzstd",
             ]
         ),
         .testTarget(

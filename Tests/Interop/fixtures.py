@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import numcodecs
 import zarr
-from zarr.codecs import BytesCodec, GzipCodec, BloscCodec
+from zarr.codecs import BytesCodec, GzipCodec, BloscCodec, ZstdCodec
 
 FIXTURES = Path(__file__).resolve().parents[1] / "SwiftZarrTests" / "Fixtures"
 CASES = {
@@ -47,6 +47,20 @@ CASES["v2-blosc-typesize"] = dict(zarr_format=2, dtype="<i4",
     compressors=numcodecs.Blosc(cname="lz4", shuffle=2, typesize=8))
 CASES["v3-blosc-level0-blocks"] = dict(zarr_format=3, dtype="int32", serializer=BytesCodec(endian="little"),
     compressors=[BloscCodec(cname="lz4", clevel=0, shuffle="noshuffle", typesize=4, blocksize=256)])
+
+
+for checksum in (False, True):
+    suffix = "checksum" if checksum else "no-checksum"
+    CASES[f"v2-zstd-{suffix}"] = dict(zarr_format=2, dtype="<i4",
+        compressors=numcodecs.Zstd(level=-3, checksum=checksum))
+    CASES[f"v3-zstd-{suffix}"] = dict(zarr_format=3, dtype="int32",
+        serializer=BytesCodec(endian="little"),
+        compressors=[ZstdCodec(level=0, checksum=checksum)])
+CASES["v2-blosc-zstd-byte"] = dict(zarr_format=2, dtype="<i4",
+    compressors=numcodecs.Blosc(cname="zstd", clevel=3, shuffle=1))
+CASES["v3-blosc-zstd-bit"] = dict(zarr_format=3, dtype="int32",
+    serializer=BytesCodec(endian="little"),
+    compressors=[BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle", typesize=4)])
 
 
 def expected(name):

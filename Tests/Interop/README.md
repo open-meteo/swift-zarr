@@ -14,7 +14,7 @@ endian, nominal-size edge chunks, V3 slash/dot and V2-style keys,
 missing chunks, scalars, and nullable dimension names.
 
 Codec fixtures cover Blosc shuffle modes, auto-shuffle, typesize and block size,
-LZ4, gzip, zlib, and bzip2, including different compression levels.
+LZ4, gzip, zlib, zstd, and bzip2, with varied compression levels and zstd checksums.
 
 Most data arrays have shape `[3, 5]` and chunks `[2, 3]`; Blosc shuffle cases
 use shape `[9, 9]` and chunks `[8, 8]`, and Blosc block-size cases use shape
