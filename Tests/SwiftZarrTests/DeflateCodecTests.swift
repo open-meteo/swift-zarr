@@ -17,12 +17,29 @@ func testDeflateEncodingAndLevels(gzip: Bool) throws {
     #expect(Data(decoded) == data)
     #expect(try compressed.decode(encoded) == data)
     #expect(try compressed.decode(compressed.encode(Data())).isEmpty)
+    let direct = try #require(compressed as? any DestinationDecodingCodec)
+    let inputs =
+        gzip ? [encoded, encoded + encoded, try compressed.encode(Data())] : [encoded, try compressed.encode(Data())]
+    for input in inputs {
+        let expected = try compressed.decode(input)
+        var destination = Data(count: expected.count)
+        try destination.withUnsafeMutableBytes { try direct.decode(input, into: $0) }
+        #expect(destination == expected)
+    }
     for invalid in [Data(), Data([1, 2, 3]), Data(encoded.dropLast()), encoded + Data([0])] {
         #expect(throws: CodecError.self) { try compressed.decode(invalid) }
+        var destination = Data(count: data.count)
+        #expect(throws: CodecError.self) {
+            try destination.withUnsafeMutableBytes { try direct.decode(invalid, into: $0) }
+        }
     }
     var corrupt = encoded
     corrupt[corrupt.count - 1] ^= 1
     #expect(throws: CodecError.self) { try compressed.decode(corrupt) }
+    var destination = Data(count: data.count)
+    #expect(throws: CodecError.self) {
+        try destination.withUnsafeMutableBytes { try direct.decode(corrupt, into: $0) }
+    }
     if gzip { #expect(try compressed.decode(encoded + encoded) == data + data) }
 }
 

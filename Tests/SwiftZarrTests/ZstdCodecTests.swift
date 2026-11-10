@@ -34,6 +34,10 @@ func testZstdFramesAndCorruption() throws {
     corrupt[corrupt.count - 1] ^= 1
     for invalid in [Data(), Data([1, 2, 3]), Data(encoded.dropLast()), corrupt, encoded + Data([0])] {
         #expect(throws: CodecError.self) { try codec.decode(invalid) }
+        var destination = Data(count: data.count)
+        #expect(throws: CodecError.self) {
+            try destination.withUnsafeMutableBytes { try codec.decode(invalid, into: $0) }
+        }
     }
     // Bypass the Swift encoder to exercise a frame without a content-size field.
     let context = try #require(ZSTD_createCCtx())
@@ -48,6 +52,18 @@ func testZstdFramesAndCorruption() throws {
     try #require(ZSTD_isError(count) == 0)
     frame.count = count
     #expect(try codec.decode(frame) == data)
+    for input in [encoded, frame, encoded + encoded, encoded + (try codec.encode(Data()))] {
+        let expected = try codec.decode(input)
+        var destination = Data(count: expected.count)
+        try destination.withUnsafeMutableBytes { try codec.decode(input, into: $0) }
+        #expect(destination == expected)
+        for size in [expected.count - 1, expected.count + 1] {
+            var wrongSize = Data(count: size)
+            #expect(throws: ZarrArrayError.invalidDataSize(expected: size, got: expected.count)) {
+                try wrongSize.withUnsafeMutableBytes { try codec.decode(input, into: $0) }
+            }
+        }
+    }
 }
 
 @Test(arguments: [ZarrVersion.v2, .v3])

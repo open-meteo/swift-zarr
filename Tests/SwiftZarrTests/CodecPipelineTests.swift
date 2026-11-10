@@ -85,3 +85,47 @@ func testSingleByteSerializerNeedsNoEndian() throws {
     #expect(try pipeline.decode(raw) == raw)
     #expect(try pipeline.encode(raw) == raw)
 }
+
+@Test(
+    arguments: ["little", "big"],
+    [
+        [V3Codec(name: "zstd")], [.init(name: "gzip")], [.init(name: "zlib")], [.init(name: "lz4")],
+        [.init(name: "blosc", configuration: ["shuffle": .string("shuffle"), "typesize": .int(4)])],
+        [.init(name: "blosc", configuration: ["shuffle": .string("bitshuffle"), "typesize": .int(4)])],
+        [.init(name: "bz2")], [], [.init(name: "gzip"), .init(name: "zlib")],
+    ]
+)
+func testWholeChunkFloatSubset(endian: String, compressors: [V3Codec]) async throws {
+    let directory = try createTempDir()
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    let storage = LocalFileStorage(basePath: directory)
+    let codecs = [V3Codec(name: "bytes", configuration: ["endian": .string(endian)])] + compressors
+    let pipeline = try CodecPipeline(v3: codecs, dataType: ZarrDataType.parseV3("float32"))
+    let array = try ZarrArray(
+        metadata: V3ArrayMetadata(
+            shape: [2, 3],
+            dataType: "float32",
+            chunkGrid: .init(configuration: .init(chunkShape: [2, 3])),
+            fillValue: .int(7),
+            codecs: codecs
+        ),
+        storage: storage,
+        path: ""
+    )
+    let missing: [Float] = try await array.retrieveArraySubset([0..<2, 0..<3])
+    #expect(missing == Array(repeating: 7, count: 6))
+    let bits: [UInt32] = [0, 0x8000_0000, 0x3f80_0000, 0x7f80_0000, 0x7fc0_1234, 0xc020_0000]
+    let words = bits.map { endian == "little" ? $0.littleEndian : $0.bigEndian }
+    let bytes = words.withUnsafeBytes { Data($0) }
+    try await array.storeChunk([0, 0], data: bytes)
+    let values: [Float] = try await array.retrieveArraySubset([0..<2, 0..<3])
+    #expect(values.map(\.bitPattern) == bits)
+    let partial: [Float] = try await array.retrieveArraySubset([1..<2, 0..<3])
+    #expect(partial.map(\.bitPattern) == Array(bits[3...]))
+    for invalid in [Data(bytes.dropLast()), bytes + Data([0])] {
+        try await storage.write(path: array.chunkKey([0, 0]), data: pipeline.encode(invalid))
+        await #expect(throws: ZarrArrayError.invalidDataSize(expected: bytes.count, got: invalid.count)) {
+            let _: [Float] = try await array.retrieveArraySubset([0..<2, 0..<3])
+        }
+    }
+}

@@ -37,6 +37,10 @@ func testV2BloscShuffleModes(mode: Int, typesize: Int, flags: Int) throws {
     let encoded = try pipeline.encode(source)
     #expect(Int(encoded[2] & 5) == flags)
     #expect(try pipeline.decode(encoded) == source)
+    let decoder = try #require(pipeline.destinationDecoder)
+    var destination = Data(count: source.count)
+    try destination.withUnsafeMutableBytes { try decoder.decode(encoded, into: $0) }
+    #expect(destination == source)
 }
 
 @Test(arguments: [("noshuffle", 0), ("shuffle", 1), ("bitshuffle", 4)])
@@ -46,6 +50,10 @@ func testV3BloscShuffleModes(mode: String, flags: Int) throws {
     let encoded = try pipeline.encode(source)
     #expect(Int(encoded[2] & 5) == flags)
     #expect(try pipeline.decode(encoded) == source)
+    let decoder = try #require(pipeline.destinationDecoder)
+    var destination = Data(count: source.count)
+    try destination.withUnsafeMutableBytes { try decoder.decode(encoded, into: $0) }
+    #expect(destination == source)
 }
 
 @Test(arguments: [

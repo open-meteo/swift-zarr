@@ -23,30 +23,42 @@ public struct BloscCodec: Codec {
     }
 
     public func decode(_ data: Data) throws -> Data {
-        var destSize = 0
+        var output = Data(count: try decodedSize(data))
+        try output.withUnsafeMutableBytes { try decompress(data, into: $0) }
+        return output
+    }
+
+    internal func decode(_ data: Data, into destination: UnsafeMutableRawBufferPointer) throws {
+        guard try decodedSize(data) == destination.count else {
+            // Validate the compressed payload before reporting a size mismatch.
+            let size = try decode(data).count
+            throw ZarrArrayError.invalidDataSize(expected: destination.count, got: size)
+        }
+        try decompress(data, into: destination)
+    }
+
+    private func decodedSize(_ data: Data) throws -> Int {
+        var size = 0
         let validation = data.withUnsafeBytes { raw in
-            // The C validator handles short buffers, but requires a non-null pointer.
             guard let source = raw.baseAddress else { return CInt(-1) }
-            return blosc_cbuffer_validate(source, raw.count, &destSize)
+            return blosc_cbuffer_validate(source, raw.count, &size)
         }
-        guard validation == 0 else {
-            throw BloscError.invalidData("invalid blosc buffer")
-        }
-        // Blosc represents an empty source with a valid header and a decoded size of zero.
-        if destSize == 0 { return Data() }
-        var output = Data(count: destSize)
-        let result = try data.withUnsafeBytes { src in
-            try output.withUnsafeMutableBytes { dst in
-                guard let srcPtr = src.baseAddress, let dstPtr = dst.baseAddress else {
-                    throw BloscError.invalidData("null pointer")
-                }
-                return blosc_decompress(srcPtr, dstPtr, dst.count)
+        guard validation == 0 else { throw BloscError.invalidData("invalid blosc buffer") }
+        return size
+    }
+
+    private func decompress(_ data: Data, into destination: UnsafeMutableRawBufferPointer) throws {
+        // A valid Blosc header with zero decoded bytes represents an empty source.
+        guard !destination.isEmpty else { return }
+        let result = try data.withUnsafeBytes { source in
+            guard let src = source.baseAddress, let dst = destination.baseAddress else {
+                throw BloscError.invalidData("null pointer")
             }
+            return blosc_decompress(src, dst, destination.count)
         }
-        guard result > 0, Int(result) == destSize else {
+        guard result > 0, Int(result) == destination.count else {
             throw BloscError.decompressFailed(Int(result))
         }
-        return output
     }
 
     public func encode(_ data: Data) throws -> Data {
@@ -97,3 +109,5 @@ public enum BloscError: Error, Sendable {
     case decompressFailed(Int)
     case compressFailed(String)
 }
+
+extension BloscCodec: DestinationDecodingCodec {}
