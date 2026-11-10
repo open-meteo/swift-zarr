@@ -1,6 +1,7 @@
 import Foundation
-import SwiftZarr
 import Testing
+
+@testable import SwiftZarr
 
 @Test
 func testLZ4BlockRepresentation() throws {
@@ -23,6 +24,10 @@ func testLZ4BlockRepresentation() throws {
 ])
 func testRejectMalformedLZ4Blocks(encoded: Data) {
     #expect(throws: CodecError.self) { try LZ4Codec().decode(encoded) }
+    var destination = Data(count: 3)
+    #expect(throws: CodecError.self) {
+        try destination.withUnsafeMutableBytes { try LZ4Codec().decode(encoded, into: $0) }
+    }
 }
 
 @Test(arguments: [-1, 0, Int(Int32.max) + 1])

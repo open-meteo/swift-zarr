@@ -1184,6 +1184,10 @@ func testBloscRejectsMalformedBuffers() throws {
         invalidBlockSize,
     ] {
         #expect(throws: BloscError.self) { try BloscCodec().decode(data) }
+        var destination = Data(count: 400)
+        #expect(throws: BloscError.self) {
+            try destination.withUnsafeMutableBytes { try BloscCodec().decode(data, into: $0) }
+        }
     }
 }
 

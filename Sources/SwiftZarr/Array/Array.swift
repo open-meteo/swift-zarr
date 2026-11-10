@@ -265,6 +265,21 @@ public struct ZarrArray: Sendable {
         guard byteCount > 0 else { return [T]() }
         let chunks = subsetChunks(ranges)
         if coversWholeChunk(ranges, chunks: chunks) {
+            if !orderIsF, let decoder = codecPipeline.destinationDecoder {
+                let key = zarrKey(path, chunkKey(chunks[0]))
+                guard let raw = try await storage.readIfExists(path: key) else {
+                    return try T.decode(fillValueData(), endian: dataType.endian)
+                }
+                let count = chunkByteCount / elementSize
+                var values = try [T](unsafeUninitializedCapacity: count) { buffer, initialized in
+                    try decoder.decode(raw, into: UnsafeMutableRawBufferPointer(buffer))
+                    initialized = count
+                }
+                if (dataType.endian == .big && isLittleEndian) || (dataType.endian == .little && !isLittleEndian) {
+                    T.swapByteOrder(&values)
+                }
+                return values
+            }
             return try T.decode(await readChunkRaw(chunks[0]), endian: dataType.endian)
         }
         // Initialized storage remains valid across suspension and failed chunk reads.

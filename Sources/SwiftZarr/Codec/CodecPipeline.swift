@@ -165,6 +165,11 @@ internal struct CodecPipeline: Sendable {
         return result
     }
 
+    /// A single capable compressor can decode directly after bytes serialization.
+    var destinationDecoder: (any DestinationDecodingCodec)? {
+        compressors.count == 1 ? compressors[0] as? any DestinationDecodingCodec : nil
+    }
+
     func encode(_ data: Data) throws -> Data {
         var result = data
         for codec in compressors {
