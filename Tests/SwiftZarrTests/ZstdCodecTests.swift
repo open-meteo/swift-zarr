@@ -57,7 +57,7 @@ func testZstdFramesAndCorruption() throws {
         var destination = Data(count: expected.count)
         try destination.withUnsafeMutableBytes { try codec.decode(input, into: $0) }
         #expect(destination == expected)
-        for size in [expected.count - 1, expected.count + 1] {
+        for size in [0, expected.count - 1, expected.count + 1] {
             var wrongSize = Data(count: size)
             #expect(throws: ZarrArrayError.invalidDataSize(expected: size, got: expected.count)) {
                 try wrongSize.withUnsafeMutableBytes { try codec.decode(input, into: $0) }

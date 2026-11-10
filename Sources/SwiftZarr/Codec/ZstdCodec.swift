@@ -46,65 +46,35 @@ public struct ZstdCodec: Codec {
         return output
     }
 
-    /// Decode into caller-owned storage. Oversized output uses the general decoder
-    /// to preserve frame validation and the exact decoded-size error.
-    internal func decode(_ data: Data, into destination: UnsafeMutableRawBufferPointer) throws {
-        guard !data.isEmpty, let context = ZSTD_createDCtx() else {
-            throw CodecError.invalidData("empty zstd input or context allocation failed")
-        }
-        defer { ZSTD_freeDCtx(context) }
-        let size = try data.withUnsafeBytes { source in
-            var input = ZSTD_inBuffer(src: source.baseAddress, size: source.count, pos: 0)
-            var output = ZSTD_outBuffer(dst: destination.baseAddress, size: destination.count, pos: 0)
-            var remaining = 1
-            repeat {
-                if output.pos == output.size {
-                    return try decode(data).count
-                }
-                let previousInput = input.pos
-                let previousOutput = output.pos
-                remaining = ZSTD_decompressStream(context, &output, &input)
-                guard ZSTD_isError(remaining) == 0 else {
-                    throw CodecError.invalidData(String(cString: ZSTD_getErrorName(remaining)))
-                }
-                guard input.pos != previousInput || output.pos != previousOutput else {
-                    throw CodecError.invalidData("truncated zstd frame")
-                }
-            } while input.pos < input.size || remaining != 0
-            return output.pos
-        }
-        guard size == destination.count else {
-            throw ZarrArrayError.invalidDataSize(expected: destination.count, got: size)
-        }
+    public func decode(_ data: Data) throws -> Data {
+        try decode(data, destination: nil)
     }
 
-    public func decode(_ data: Data) throws -> Data {
+    internal func decode(_ data: Data, into destination: UnsafeMutableRawBufferPointer) throws {
+        _ = try decode(data, destination: destination)
+    }
+
+    private func decode(_ data: Data, destination: UnsafeMutableRawBufferPointer?) throws -> Data {
         guard !data.isEmpty, let context = ZSTD_createDCtx() else {
             throw CodecError.invalidData("empty zstd input or context allocation failed")
         }
         defer { ZSTD_freeDCtx(context) }
         // Streaming supports unknown content sizes and concatenated frames without trusting header allocations.
-        var output = Data()
-        var buffer = Data(count: ZSTD_DStreamOutSize())
-        try data.withUnsafeBytes { source in
+        return try data.withUnsafeBytes { source in
             var input = ZSTD_inBuffer(src: source.baseAddress, size: source.count, pos: 0)
-            var remaining = 1
-            repeat {
+            return try decodeStream(into: destination, bufferSize: ZSTD_DStreamOutSize()) { buffer in
                 let previous = input.pos
-                try buffer.withUnsafeMutableBytes { destination in
-                    var chunk = ZSTD_outBuffer(dst: destination.baseAddress, size: destination.count, pos: 0)
-                    remaining = ZSTD_decompressStream(context, &chunk, &input)
-                    guard ZSTD_isError(remaining) == 0 else {
-                        throw CodecError.invalidData(String(cString: ZSTD_getErrorName(remaining)))
-                    }
-                    guard input.pos != previous || chunk.pos != 0 else {
-                        throw CodecError.invalidData("truncated zstd frame")
-                    }
-                    output.append(destination.bindMemory(to: UInt8.self).baseAddress!, count: chunk.pos)
+                var chunk = ZSTD_outBuffer(dst: buffer.baseAddress, size: buffer.count, pos: 0)
+                let remaining = ZSTD_decompressStream(context, &chunk, &input)
+                guard ZSTD_isError(remaining) == 0 else {
+                    throw CodecError.invalidData(String(cString: ZSTD_getErrorName(remaining)))
                 }
-            } while input.pos < input.size || remaining != 0
+                guard input.pos != previous || chunk.pos != 0 else {
+                    throw CodecError.invalidData("truncated zstd frame")
+                }
+                return (chunk.pos, input.pos == input.size && remaining == 0)
+            }
         }
-        return output
     }
 }
 

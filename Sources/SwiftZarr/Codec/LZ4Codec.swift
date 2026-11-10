@@ -10,17 +10,17 @@ public struct LZ4Codec: Codec {
     }
 
     public func decode(_ data: Data) throws -> Data {
-        var output = Data(count: try decodedSize(data))
-        try output.withUnsafeMutableBytes { try decompress(data, into: $0) }
-        return output
+        try decode(data, destination: nil)
     }
 
     internal func decode(_ data: Data, into destination: UnsafeMutableRawBufferPointer) throws {
-        guard try decodedSize(data) == destination.count else {
-            let size = try decode(data).count
-            throw ZarrArrayError.invalidDataSize(expected: destination.count, got: size)
+        _ = try decode(data, destination: destination)
+    }
+
+    private func decode(_ data: Data, destination: UnsafeMutableRawBufferPointer?) throws -> Data {
+        try decodeBuffer(size: decodedSize(data), into: destination) {
+            try decompress(data, into: $0)
         }
-        try decompress(data, into: destination)
     }
 
     private func decodedSize(_ data: Data) throws -> Int {

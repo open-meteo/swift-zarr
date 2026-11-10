@@ -25,6 +25,14 @@ func testDeflateEncodingAndLevels(gzip: Bool) throws {
         var destination = Data(count: expected.count)
         try destination.withUnsafeMutableBytes { try direct.decode(input, into: $0) }
         #expect(destination == expected)
+        if !expected.isEmpty {
+            for size in [0, expected.count - 1, expected.count + 1] {
+                var wrongSize = Data(count: size)
+                #expect(throws: ZarrArrayError.invalidDataSize(expected: size, got: expected.count)) {
+                    try wrongSize.withUnsafeMutableBytes { try direct.decode(input, into: $0) }
+                }
+            }
+        }
     }
     for invalid in [Data(), Data([1, 2, 3]), Data(encoded.dropLast()), encoded + Data([0])] {
         #expect(throws: CodecError.self) { try compressed.decode(invalid) }
