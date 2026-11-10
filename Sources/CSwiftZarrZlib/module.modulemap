@@ -1,0 +1,5 @@
+module CSwiftZarrZlib [system] {
+    header "shim.h"
+    link "z"
+    export *
+}

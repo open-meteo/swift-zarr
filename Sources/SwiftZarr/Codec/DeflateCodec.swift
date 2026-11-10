@@ -1,4 +1,4 @@
-import CBlosc
+import CSwiftZarrZlib
 import Foundation
 
 /// Shared implementation for gzip and zlib framing.
