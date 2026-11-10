@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 
 public enum ZarrArrayError: Error, Sendable, Equatable {
     case mismatchedDimensions(expected: Int, got: Int)
@@ -42,6 +43,8 @@ private struct ChunkIndexBuffer: Sendable {
 }
 
 public struct ZarrArray: Sendable {
+    private static let logger = Logger(label: "SwiftZarr.ZarrArray")
+
     public let storage: any Storage
     public let path: String
     /// The original array metadata in its native Zarr version format.
@@ -267,9 +270,12 @@ public struct ZarrArray: Sendable {
         if coversWholeChunk(ranges, chunks: chunks) {
             if !orderIsF, let decoder = codecPipeline.destinationDecoder {
                 let key = zarrKey(path, chunkKey(chunks[0]))
+                let downloadStart = ContinuousClock.now
                 guard let raw = try await storage.readIfExists(path: key) else {
                     return try T.decode(fillValueData(), endian: dataType.endian)
                 }
+                let downloadDuration = downloadStart.duration(to: .now)
+                let decodeStart = ContinuousClock.now
                 let count = chunkByteCount / elementSize
                 var values = try [T](unsafeUninitializedCapacity: count) { buffer, initialized in
                     try decoder.decode(raw, into: UnsafeMutableRawBufferPointer(buffer))
@@ -278,6 +284,17 @@ public struct ZarrArray: Sendable {
                 if (dataType.endian == .big && isLittleEndian) || (dataType.endian == .little && !isLittleEndian) {
                     T.swapByteOrder(&values)
                 }
+                let decodeDuration = decodeStart.duration(to: .now)
+                Self.logger.debug(
+                    "Retrieved whole chunk",
+                    metadata: [
+                        "path": "\(key)",
+                        "compressed_bytes": "\(raw.count)",
+                        "decoded_bytes": "\(chunkByteCount)",
+                        "download_ms": "\(downloadDuration / .milliseconds(1))",
+                        "decode_ms": "\(decodeDuration / .milliseconds(1))",
+                    ]
+                )
                 return values
             }
             return try T.decode(await readChunkRaw(chunks[0]), endian: dataType.endian)
