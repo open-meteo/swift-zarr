@@ -16,6 +16,11 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-log", from: "1.0.0"),
     ],
     targets: [
+        .systemLibrary(
+            name: "CSwiftZarrZlib",
+            pkgConfig: "zlib",
+            providers: [.brew(["zlib"]), .apt(["zlib1g-dev"])]
+        ),
         // Match the vendored module name so Clang does not import zstd while compiling itself.
         .target(
             name: "libzstd",
@@ -25,18 +30,8 @@ let package = Package(
         ),
         .target(
             name: "CBlosc",
-            dependencies: ["libzstd"],
+            dependencies: ["libzstd", "CSwiftZarrZlib"],
             sources: [
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/adler32.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/compress.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/crc32.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/deflate.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/inffast.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/inflate.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/inftrees.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/trees.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/uncompr.c",
-                "deps/c-blosc/internal-complibs/zlib-1.3.1/zutil.c",
                 "deps/c-blosc/blosc/blosc.c",
                 "deps/c-blosc/blosc/blosclz.c",
                 "deps/c-blosc/blosc/shuffle.c",
@@ -54,7 +49,6 @@ let package = Package(
                 .define("HAVE_LZ4"),
                 .define("HAVE_ZSTD"),
                 .define("HAVE_ZLIB"),
-                .headerSearchPath("deps/c-blosc/internal-complibs/zlib-1.3.1"),
                 .headerSearchPath("deps/c-blosc/blosc"),
                 .headerSearchPath("deps/c-blosc/internal-complibs/lz4-1.10.0"),
                 .headerSearchPath("include"),
@@ -67,6 +61,7 @@ let package = Package(
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "Logging", package: "swift-log"),
                 "CBlosc",
+                "CSwiftZarrZlib",
                 "libzstd",
             ]
         ),
