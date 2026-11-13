@@ -1,3 +1,4 @@
+import AsyncHTTPClient
 import Foundation
 import NIOCore
 import NIOHTTP1
@@ -49,7 +50,7 @@ private final class ChunkStatusHandler: ChannelInboundHandler, Sendable {
     }
 }
 
-@Test(arguments: [200, 400, 403, 404])
+@Test(arguments: [200, 400, 403, 404, 408, 429, 503])
 func testS3ChunkHTTPStatus(code: Int) async throws {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     let requests = RequestLog()
@@ -96,7 +97,20 @@ func testS3ChunkHTTPStatus(code: Int) async throws {
                     #expect(path == "array/0")
                 }
             }
-            #expect(requests.snapshot == ["GET", "GET"])
+            let attempts = code == 408 || code == 429 || code >= 500 ? 3 : 1
+            #expect(requests.snapshot == Array(repeating: "GET", count: 2 * attempts))
+            let client = RetryingHTTPClient()
+            let request = HTTPClientRequest(url: "http://127.0.0.1:\(port)/array/0")
+            do {
+                let response = try await client.execute(request, path: "array/0")
+                _ = try await response.body.collect(upTo: 1024)
+                #expect(attempts == 1)
+                #expect(Int(response.status.code) == code)
+            } catch StorageError.httpError(let status, _, _) {
+                #expect(attempts == 3)
+                #expect(status == code)
+            }
+            #expect(requests.snapshot.count == 3 * attempts)
         } catch {
             try await server.close().get()
             throw error
