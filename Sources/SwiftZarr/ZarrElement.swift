@@ -1,6 +1,7 @@
 import Foundation
 
 public enum ZarrElementError: Error, Sendable {
+    case invalidElementCount(expected: Int, got: Int)
     case invalidByteCount(Int, elementSize: Int)
     case typeMismatch(expected: ZarrDataType.Kind, expectedSize: Int, actual: ZarrDataType)
 }
@@ -8,6 +9,8 @@ public enum ZarrElementError: Error, Sendable {
 public protocol ZarrElement: Sendable {
     static var zarrDtypeKind: ZarrDataType.Kind { get }
     static var zarrDtypeSize: Int { get }
+    /// Encode values in their existing order using the requested byte order.
+    static func encode(_ values: [Self], endian: ZarrDataType.Endian) throws -> Data
     static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Self]
 }
 
@@ -224,6 +227,10 @@ extension UInt64: ZarrElement {
 extension Bool: ZarrElement {
     public static var zarrDtypeKind: ZarrDataType.Kind { .bool }
     public static var zarrDtypeSize: Int { 1 }
+    public static func encode(_ values: [Bool], endian: ZarrDataType.Endian) -> Data {
+        Data(values.map { $0 ? 1 : 0 })
+    }
+
     public static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Bool] {
         data.map { $0 != 0 }
     }
@@ -239,6 +246,15 @@ internal protocol NativeZarrElement: ZarrElement, BitwiseCopyable, AdditiveArith
 }
 
 extension NativeZarrElement {
+    public static func encode(_ values: [Self], endian: ZarrDataType.Endian) -> Data {
+        if (endian == .big && isLittleEndian) || (endian == .little && !isLittleEndian) {
+            var swapped = values
+            swapByteOrder(&swapped)
+            return swapped.withUnsafeBytes { Data($0) }
+        }
+        return values.withUnsafeBytes { Data($0) }
+    }
+
     static func makeArray(count: Int) -> [Self] { [Self](repeating: .zero, count: count) }
 }
 

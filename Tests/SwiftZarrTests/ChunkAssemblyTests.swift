@@ -26,6 +26,10 @@ private struct CustomInt: ZarrElement, Equatable {
     let value: String
     static let zarrDtypeKind: ZarrDataType.Kind = .int
     static let zarrDtypeSize = 4
+    static func encode(_ values: [Self], endian: ZarrDataType.Endian) throws -> Data {
+        let integers = try values.map { try #require(Int32($0.value)) }
+        return Int32.encode(integers, endian: endian)
+    }
     static func decode(_ data: Data, endian: ZarrDataType.Endian) throws -> [Self] {
         try Int32.decode(data, endian: endian).map { Self(value: String($0)) }
     }

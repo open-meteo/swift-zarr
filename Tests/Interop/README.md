@@ -32,7 +32,7 @@ integers beyond Double's exact range, NaN, infinities, and negative zero in
 both V2 and V3. `limits.json` records expected bit patterns; Swift tests check
 both subset reads and nominal-size chunk reads.
 
-For uncompressed stores, Swift write tests compare serialized metadata and
+For uncompressed stores, Swift tests write typed chunk values and compare serialized metadata and
 stored chunk bytes directly with the fixtures, including endianness, physical
 C/F order, and padding. They do not use Swift readback as the expected result.
 Compressed fixtures test reading only: valid encoders may produce different

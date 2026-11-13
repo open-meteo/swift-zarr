@@ -89,15 +89,18 @@ private func testWriteUncompressedPythonFixtures(fixture: PythonFixture) async t
     let writtenMetadata = try await storage.read(path: "\(fixture.name)/\(metadataKey)")
     #expect(try JSONDecoder().decode(ZarrJSONValue.self, from: writtenMetadata) == expectedMetadata)
     for buffer in fixture.buffers {
-        let words = buffer.values.map { fixture.bigEndian ? $0.bigEndian : $0.littleEndian }
-        let bytes = words.withUnsafeBytes { Data($0) }
-        try await array.storeChunk(buffer.indices, data: bytes)
+        try await array.storeChunk(buffer.indices, elements: buffer.values)
         let key = array.chunkKey(buffer.indices)
         let expected = try Data(contentsOf: source.appendingPathComponent(key))
         #expect(
             try await storage.read(path: "\(fixture.name)/\(key)") == expected,
             "\(fixture.name), \(buffer.indices)"
         )
+    }
+    let reopened = try await ZarrArray(storage: storage, path: fixture.name)
+    for buffer in fixture.buffers {
+        let values: [Int32] = try await reopened.retrieveChunk(buffer.indices)
+        #expect(values == buffer.values)
     }
 }
 
