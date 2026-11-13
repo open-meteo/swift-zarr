@@ -2,9 +2,6 @@ import AsyncHTTPClient
 import Foundation
 import Logging
 import NIOCore
-import NIOHTTP1
-import NIOPosix
-import NIOSSL
 
 public struct RetryConfiguration: Sendable {
     let maxAttempts: Int
@@ -106,36 +103,21 @@ public struct RetryingHTTPClient: Sendable {
 
     private func isRetryable(_ error: any Error) -> Bool {
         switch error {
+        case is CancellationError, is NIOTooManyBytesError: return false
         case let error as HTTPClientError:
             switch error {
-            case .connectTimeout, .readTimeout, .writeTimeout, .deadlineExceeded,
-                .getConnectionFromPoolTimeout, .tlsHandshakeTimeout, .socksHandshakeTimeout,
-                .httpProxyHandshakeTimeout, .remoteConnectionClosed, .uncleanShutdown:
-                return true
-            default: return false
+            case .invalidURL, .emptyHost, .emptyScheme, .alreadyShutdown, .bodyLengthMismatch,
+                .redirectLimitReached, .redirectCycleDetected, .cancelled:
+                return false
+            default: return true
             }
-        case let error as ChannelError:
+        case let error as StorageError:
             switch error {
-            case .connectTimeout, .ioOnClosedChannel, .inputClosed, .outputClosed, .eof: return true
+            case .connectionFailed, .timeout: return true
+            case .httpError(let code, _, _): return isRetryableStatus(code)
             default: return false
             }
-        case let error as IOError:
-            return [ECONNRESET, ECONNABORTED, ECONNREFUSED, ETIMEDOUT, EPIPE, ENETDOWN, ENETUNREACH, EHOSTUNREACH]
-                .contains(error.errnoCode)
-        case let error as HTTPParserError:
-            return error == .invalidEOFState
-        case let error as NIOSSLError:
-            return error == .uncleanShutdown
-        case let error as NIOConnectionError:
-            if error.connectionErrors.isEmpty {
-                // Older NIO versions do not distinguish temporary from permanent DNS failures.
-                // Retry lookup failures within the attempt limit when no connection was attempted.
-                return error.dnsAError != nil || error.dnsAAAAError != nil
-            }
-            return error.connectionErrors.contains { isRetryable($0.error) }
-        case StorageError.httpError(let code, _, _):
-            return isRetryableStatus(code)
-        default: return false
+        default: return true  // Preserve bounded retries for unfamiliar transport errors.
         }
     }
 

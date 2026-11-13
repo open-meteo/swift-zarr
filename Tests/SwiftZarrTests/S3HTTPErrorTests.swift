@@ -20,12 +20,10 @@ private final class ChunkStatusHandler: ChannelInboundHandler, Sendable {
 
     let status: HTTPResponseStatus
     let requests: RequestLog
-    let truncateFirst: Bool
 
-    init(status: HTTPResponseStatus, requests: RequestLog, truncateFirst: Bool) {
+    init(status: HTTPResponseStatus, requests: RequestLog) {
         self.status = status
         self.requests = requests
-        self.truncateFirst = truncateFirst
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -42,14 +40,6 @@ private final class ChunkStatusHandler: ChannelInboundHandler, Sendable {
                 headers: HTTPHeaders([("Content-Length", String(body.count)), ("Connection", "close")])
             )
             context.write(wrapOutboundOut(.head(head)), promise: nil)
-            if truncateFirst && requests.snapshot.count == 1 {
-                // Close before the declared Content-Length has arrived.
-                let channel = context.channel
-                context.writeAndFlush(
-                    wrapOutboundOut(.body(.byteBuffer(ByteBuffer(bytes: body.prefix(4)))))
-                ).whenComplete { _ in channel.close(promise: nil) }
-                return
-            }
             if !body.isEmpty {
                 context.write(wrapOutboundOut(.body(.byteBuffer(ByteBuffer(bytes: body)))), promise: nil)
             }
@@ -113,18 +103,21 @@ func testS3ChunkHTTPStatus(code: Int, attempts: Int) async throws {
 }
 
 @Test
-func testS3RetriesTruncatedResponse() async throws {
-    try await withChunkServer(status: 200, truncateFirst: true) { baseURL, requests in
-        let storage = try S3CompatibleStorage(baseURL: baseURL)
-        let data = try await storage.read(path: "array/0")
-        #expect(data == Data([1, 0, 0, 0, 2, 0, 0, 0]))
-        #expect(requests.snapshot == ["GET", "GET"])
+func testS3DoesNotRetryOversizedResponse() async throws {
+    try await withChunkServer(status: 200) { baseURL, requests in
+        let storage = try S3CompatibleStorage(baseURL: baseURL, maxBodySize: 4)
+        do {
+            _ = try await storage.read(path: "array/0")
+            Issue.record("Expected the response size limit to fail")
+        } catch StorageError.connectionFailed(_, let underlying) {
+            #expect(underlying is NIOTooManyBytesError)
+        }
+        #expect(requests.snapshot == ["GET"])
     }
 }
 
 private func withChunkServer(
     status: Int,
-    truncateFirst: Bool = false,
     body: (String, RequestLog) async throws -> Void
 ) async throws {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -136,8 +129,7 @@ private func withChunkServer(
                     channel.pipeline.addHandler(
                         ChunkStatusHandler(
                             status: .init(statusCode: status),
-                            requests: requests,
-                            truncateFirst: truncateFirst
+                            requests: requests
                         )
                     )
                 }
