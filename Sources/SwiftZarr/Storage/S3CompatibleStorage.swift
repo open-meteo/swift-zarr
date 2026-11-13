@@ -1,6 +1,7 @@
 import AsyncHTTPClient
 import Foundation
 import NIOCore
+import NIOFoundationCompat
 import NIOHTTP1
 
 // TODO: Gate the S3 backend and its dependencies behind a Swift package trait
@@ -75,7 +76,11 @@ public final class S3CompatibleStorage: Storage {
         let (response, buffer) = try await retryingClient.executeAndCollect(request, path: path, maxBytes: maxBodySize)
         switch response.status.code {
         case 200...299:
-            return Data(buffer.readableBytesView)
+            return buffer.getData(
+                at: buffer.readerIndex,
+                length: buffer.readableBytes,
+                byteTransferStrategy: .automatic
+            )!
         case 404:
             throw StorageError.noSuchFile(path)
         default:
