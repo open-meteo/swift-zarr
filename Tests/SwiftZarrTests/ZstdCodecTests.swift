@@ -94,7 +94,7 @@ func testZstdArrayWriteRead(version: ZarrVersion) async throws {
     }
     let values: [UInt8] = Array(0..<8)
     try await array.storeMetadata()
-    try await array.storeChunk([0], data: Data(values))
+    try await array.storeChunk([0], elements: values)
     let encoded = try await storage.read(path: array.chunkKey([0]))
     try #require(encoded.count >= 5)
     #expect(encoded[4] & 0x04 != 0)

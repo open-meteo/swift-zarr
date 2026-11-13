@@ -35,7 +35,7 @@ targets: [
 - **Zarr V2 and V3** — read and write arrays and groups
 - **Codecs** — Blosc (blosclz, LZ4/LZ4HC, zlib, zstd), V2 LZ4 (size-prefixed blocks), gzip/zlib (system zlib), zstd, bzip2, and uncompressed
 - **Storage backends** — local filesystem, S3-compatible (AWS, GCS, etc.)
-- **Typed reads** — generic `retrieveChunk` and `retrieveArraySubset` returning typed Swift arrays
+- **Typed reads and writes** — `retrieveChunk`, `retrieveArraySubset`, and `storeChunk(_:elements:)` with typed Swift arrays
 - **Slice/subset reading** — retrieve arbitrary N-dimensional ranges without loading full chunks
 - **C and F order** — row-major and column-major chunk layouts
 - **Fill values** — missing chunks transparently return the array fill value, including NaN/Infinity/hex
@@ -58,6 +58,24 @@ let values: [Double] = try await lat.retrieveChunk([0])
 let t2m = try await group.openArray(name: "2m_temperature")
 let slice: [Float] = try await t2m.retrieveArraySubset([0..<10, 0..<64, 0..<8])
 ```
+
+Write typed chunks to a local store:
+
+```swift
+let outputStorage = LocalFileStorage(basePath: "/path/to/output.zarr")
+let array = try ZarrArray(
+    metadata: V2ArrayMetadata(shape: [3], chunks: [2], dtype: ">i4"),
+    storage: outputStorage,
+    path: ""
+)
+try await array.storeMetadata()
+try await array.storeChunk([0], elements: [Int32(10), 20])
+try await array.storeChunk([1], elements: [Int32(30), 0]) // Includes edge padding.
+```
+
+Supply a full chunk, including padding beyond the array bounds, in the declared
+C/F order (V3 uses C order with the supported bytes codec). The library validates
+element type and count and converts byte order automatically.
 
 Group attributes are editable local snapshots for both V2 and V3. Save edits explicitly:
 

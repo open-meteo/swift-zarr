@@ -466,6 +466,19 @@ public struct ZarrArray: Sendable {
         try await storage.write(path: key, data: encoded)
     }
 
+    /// Encode and store a full chunk of typed values, including edge padding.
+    /// Elements must be in the declared array order (C or F), matching `retrieveChunk`.
+    /// Byte order conversion is automatic; elements are not reordered or numerically converted.
+    public func storeChunk<T: ZarrElement>(_ indices: [Int], elements: [T]) async throws {
+        try validateIndices(indices)
+        try validateElementType(T.self)
+        let expected = chunkByteCount / elementSize
+        guard elements.count == expected else {
+            throw ZarrElementError.invalidElementCount(expected: expected, got: elements.count)
+        }
+        try await storeChunk(indices, data: T.encode(elements, endian: dataType.endian))
+    }
+
     /// Delete a single chunk from storage.
     public func eraseChunk(_ indices: [Int]) async throws {
         try validateIndices(indices)

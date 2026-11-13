@@ -35,7 +35,7 @@ func testPublicArrayMetadataConstruction(version: ZarrVersion) async throws {
         #expect(metadata.chunkKeyEncoding.name == "default")
         #expect(metadata.chunkKeyEncoding.configuration?.separator == "/")
     }
-    try await array.storeChunk([0], data: Data([1, 0, 0, 0, 2, 0, 0, 0]))
+    try await array.storeChunk([0], elements: [Int32(1), 2])
     let reopened = try await ZarrArray(storage: storage, path: "")
     #expect(reopened.version == version)
     #expect(reopened.shape == [3])
