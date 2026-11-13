@@ -529,8 +529,7 @@ func testMissingChunkReturnsFillValue() async throws {
     let storage = LocalFileStorage(basePath: tmp)
     let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
     try await array.storeMetadata()
-    let chunk00Data = int32LERange(4)
-    try await array.storeChunk([0, 0], data: chunk00Data)
+    try await array.storeChunk([0, 0], elements: [Int32(0), 1, 2, 3])
 
     let chunk01 = try await array.readChunkRaw([0, 1])
     #expect(chunk01.count == 4 * 4)
@@ -567,10 +566,7 @@ func testFillValueNaNfloat32() async throws {
     let storage = LocalFileStorage(basePath: tmp)
     let array = try ZarrArray(metadata: meta, storage: storage, path: "arr")
     try await array.storeMetadata()
-    var data = Data(capacity: 8)
-    var v1: Float = 1.0; withUnsafeBytes(of: &v1) { data.append(contentsOf: $0) }
-    var v2: Float = 2.0; withUnsafeBytes(of: &v2) { data.append(contentsOf: $0) }
-    try await array.storeChunk([0], data: data)
+    try await array.storeChunk([0], elements: [Float(1), 2])
 
     let chunk1 = try await array.readChunkRaw([0]); #expect(chunk1.count == 8)
     let chunk2 = try await array.readChunkRaw([1]); #expect(chunk2.count == 8)
@@ -1489,14 +1485,7 @@ func testFOrderSingleChunk() async throws {
     let array = try ZarrArray(metadata: meta, storage: storage, path: "fsingle")
     try await array.storeMetadata()
 
-    var fData = Data(capacity: 24)
-    for j in 0..<3 {
-        for i in 0..<2 {
-            var v = Int32(i + j * 2).littleEndian
-            withUnsafeBytes(of: &v) { fData.append(contentsOf: $0) }
-        }
-    }
-    try await array.storeChunk([0, 0], data: fData)
+    try await array.storeChunk([0, 0], elements: [Int32(0), 1, 2, 3, 4, 5])
 
     let values: [Int32] = try await array.retrieveChunk([0, 0])
     #expect(values == [0, 1, 2, 3, 4, 5])
@@ -1523,35 +1512,13 @@ func testFOrderMultiChunk() async throws {
     try await array.storeMetadata()
 
     // Chunk [0,0]: rows 0-1, cols 0-2 → [[0,1,2],[6,7,8]] → F: [0,6,1,7,2,8]
-    var f00 = Data(capacity: 24)
-    for j in 0..<3 {
-        for i in 0..<2 { var v = Int32(i * 6 + j).littleEndian; withUnsafeBytes(of: &v) { f00.append(contentsOf: $0) } }
-    }
-    try await array.storeChunk([0, 0], data: f00)
+    try await array.storeChunk([0, 0], elements: [Int32(0), 6, 1, 7, 2, 8])
     // Chunk [0,1]: rows 0-1, cols 3-5 → [[3,4,5],[9,10,11]] → F: [3,9,4,10,5,11]
-    var f01 = Data(capacity: 24)
-    for j in 0..<3 {
-        for i in 0..<2 {
-            var v = Int32(i * 6 + j + 3).littleEndian; withUnsafeBytes(of: &v) { f01.append(contentsOf: $0) }
-        }
-    }
-    try await array.storeChunk([0, 1], data: f01)
+    try await array.storeChunk([0, 1], elements: [Int32(3), 9, 4, 10, 5, 11])
     // Chunk [1,0]: rows 2-3, cols 0-2 → [[12,13,14],[18,19,20]] → F: [12,18,13,19,14,20]
-    var f10 = Data(capacity: 24)
-    for j in 0..<3 {
-        for i in 0..<2 {
-            var v = Int32((i + 2) * 6 + j).littleEndian; withUnsafeBytes(of: &v) { f10.append(contentsOf: $0) }
-        }
-    }
-    try await array.storeChunk([1, 0], data: f10)
+    try await array.storeChunk([1, 0], elements: [Int32(12), 18, 13, 19, 14, 20])
     // Chunk [1,1]: rows 2-3, cols 3-5 → [[15,16,17],[21,22,23]] → F: [15,21,16,22,17,23]
-    var f11 = Data(capacity: 24)
-    for j in 0..<3 {
-        for i in 0..<2 {
-            var v = Int32((i + 2) * 6 + j + 3).littleEndian; withUnsafeBytes(of: &v) { f11.append(contentsOf: $0) }
-        }
-    }
-    try await array.storeChunk([1, 1], data: f11)
+    try await array.storeChunk([1, 1], elements: [Int32(15), 21, 16, 22, 17, 23])
 
     #expect(try await array.readRaw() == int32LERange(24))
     let slice: [Int32] = try await array.retrieveArraySubset([1..<3, 1..<5])
@@ -1579,23 +1546,14 @@ func testFOrderEdgeChunk() async throws {
     try await array.storeMetadata()
 
     // Chunk [0,0]: rows 0-1, cols 0-2 → [[0,1,2],[5,6,7]] → F: [0,5,1,6,2,7]
-    var f00 = Data(capacity: 24)
-    for j in 0..<3 {
-        for i in 0..<2 { var v = Int32(i * 5 + j).littleEndian; withUnsafeBytes(of: &v) { f00.append(contentsOf: $0) } }
-    }
-    try await array.storeChunk([0, 0], data: f00)
+    try await array.storeChunk([0, 0], elements: [Int32(0), 5, 1, 6, 2, 7])
     // Nominal 2x3 chunks in F order; -1 marks out-of-array padding.
     for (indices, values) in [
         ([0, 1], [3, 8, 4, 9, -1, -1]),
         ([1, 0], [10, -1, 11, -1, 12, -1]),
         ([1, 1], [13, -1, 14, -1, -1, -1]),
     ] {
-        var bytes = Data()
-        for value in values {
-            var v = Int32(value).littleEndian
-            withUnsafeBytes(of: &v) { bytes.append(contentsOf: $0) }
-        }
-        try await array.storeChunk(indices, data: bytes)
+        try await array.storeChunk(indices, elements: values.map(Int32.init))
     }
 
     #expect(try await array.readRaw() == int32LERange(15))
@@ -1758,8 +1716,7 @@ func testRetrieveChunkIfExists() async throws {
     try await array.storeMetadata()
 
     // Store only chunk [0]; chunk [1] is absent.
-    let chunk0Data = Data(int32LERange(3).prefix(12))
-    try await array.storeChunk([0], data: chunk0Data)
+    try await array.storeChunk([0], elements: [Int32(0), 1, 2])
 
     let present: [Int32]? = try await array.retrieveChunkIfExists([0])
     #expect(present == [0, 1, 2])

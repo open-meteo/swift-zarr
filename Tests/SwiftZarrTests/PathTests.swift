@@ -129,7 +129,7 @@ func testRootArrayPaths(version: ZarrVersion) async throws {
     #expect(reopened.path.isEmpty)
     let chunkKey = version == .v2 ? "0" : "c/0"
     let bytes = Data([42, 0, 0, 0])
-    try await reopened.storeChunk([0], data: bytes)
+    try await reopened.storeChunk([0], elements: [Int32(42)])
     #expect(try await storage.read(path: chunkKey) == bytes)
     let values: [Int32] = try await reopened.retrieveChunk([0])
     let existing: [Int32]? = try await reopened.retrieveChunkIfExists([0])

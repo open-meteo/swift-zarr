@@ -68,7 +68,7 @@ func testV3ChunkStorage(name: String, separator: String, key: String) async thro
     #expect(reread == [42])
     try await reopened.eraseChunk([1, 2])
     #expect(try await !storage.exists(path: "array/" + key))
-    try await reopened.storeChunk([1, 2], data: bytes)
+    try await reopened.storeChunk([1, 2], elements: [Int32(42)])
     #expect(try await storage.read(path: "array/" + key) == bytes)
 }
 
