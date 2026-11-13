@@ -52,8 +52,8 @@ func testCustomElementSubsetAndBoolNormalization() async throws {
         dimensionSeparator: nil
     )
     let array = try ZarrArray(metadata: meta, storage: storage, path: "custom")
-    try await array.storeChunk([0], data: Data([1, 0, 0, 0, 2, 0, 0, 0]))
-    try await array.storeChunk([1], data: Data([3, 0, 0, 0, 99, 0, 0, 0]))
+    try await array.storeChunk([0], elements: [Int32(1), 2])
+    try await array.storeChunk([1], elements: [Int32(3), 99])
     let custom: [CustomInt] = try await array.retrieveArraySubset([1..<3])
     #expect(custom.map(\.value) == ["2", "3"])
     let boolMeta = V2ArrayMetadata(

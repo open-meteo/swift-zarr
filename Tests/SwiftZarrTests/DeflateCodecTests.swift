@@ -100,7 +100,7 @@ func testV2ZlibDefaultCompressionLevel() async throws {
     let array = try ZarrArray(metadata: metadata, storage: storage, path: "")
     let values: [UInt8] = Array(0..<8)
     try await array.storeMetadata()
-    try await array.storeChunk([0], data: Data(values))
+    try await array.storeChunk([0], elements: values)
     let encoded = try await storage.read(path: array.chunkKey([0]))
     #expect(try Data(ZlibArchive.unarchive(archive: encoded)) == Data(values))
     #expect(try ZlibCodec(level: -1).encode(Data(values)) == encoded)

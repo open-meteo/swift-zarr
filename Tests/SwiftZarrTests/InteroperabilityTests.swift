@@ -12,7 +12,6 @@ private struct PythonFixture: Decodable, Sendable, CustomTestStringConvertible {
     let shape: [Int]
     let chunks: [Int]
     let values: [Int32]
-    let bigEndian: Bool
     let buffers: [Buffer]
 }
 
