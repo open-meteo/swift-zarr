@@ -2,6 +2,7 @@ import AsyncHTTPClient
 import Foundation
 import Logging
 import NIOCore
+import NIOHTTP1
 import NIOPosix
 import NIOSSL
 
@@ -121,9 +122,16 @@ public struct RetryingHTTPClient: Sendable {
         case let error as IOError:
             return [ECONNRESET, ECONNABORTED, ECONNREFUSED, ETIMEDOUT, EPIPE, ENETDOWN, ENETUNREACH, EHOSTUNREACH]
                 .contains(error.errnoCode)
+        case let error as HTTPParserError:
+            return error == .invalidEOFState
         case let error as NIOSSLError:
             return error == .uncleanShutdown
         case let error as NIOConnectionError:
+            if error.connectionErrors.isEmpty {
+                // Older NIO versions do not distinguish temporary from permanent DNS failures.
+                // Retry lookup failures within the attempt limit when no connection was attempted.
+                return error.dnsAError != nil || error.dnsAAAAError != nil
+            }
             return error.connectionErrors.contains { isRetryable($0.error) }
         case StorageError.httpError(let code, _, _):
             return isRetryableStatus(code)
