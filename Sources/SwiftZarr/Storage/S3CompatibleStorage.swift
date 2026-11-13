@@ -3,6 +3,8 @@ import Foundation
 import NIOCore
 import NIOHTTP1
 
+// TODO: Gate the S3 backend and its dependencies behind a Swift package trait
+// once the minimum supported Swift version allows it.
 public final class S3CompatibleStorage: Storage {
     private let baseURL: URL
     private let retryingClient: RetryingHTTPClient

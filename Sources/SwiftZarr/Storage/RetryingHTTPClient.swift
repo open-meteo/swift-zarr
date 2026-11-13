@@ -40,7 +40,7 @@ public struct RetryingHTTPClient: Sendable {
     public func execute(_ request: HTTPClientRequest, path: String) async throws -> HTTPClientResponse {
         try await retry(path: path) {
             let response = try await httpClient.execute(request, timeout: config.timeout)
-            if response.status.code >= 500 {
+            if isRetryableStatus(Int(response.status.code)) {
                 let buffer = try? await response.body.collect(upTo: 1024 * 1024)
                 let responseString = buffer?.getString(at: 0, length: buffer?.readableBytes ?? 0)
                 throw StorageError.httpError(statusCode: Int(response.status.code), path: path, reason: responseString)
@@ -60,7 +60,7 @@ public struct RetryingHTTPClient: Sendable {
         try await retry(path: path) {
             let response = try await httpClient.execute(request, timeout: config.timeout)
             let buffer = try await response.body.collect(upTo: maxBytes)
-            if response.status.code >= 500 {
+            if isRetryableStatus(Int(response.status.code)) {
                 let responseString = buffer.getString(at: 0, length: buffer.readableBytes)
                 throw StorageError.httpError(statusCode: Int(response.status.code), path: path, reason: responseString)
             }
@@ -72,8 +72,12 @@ public struct RetryingHTTPClient: Sendable {
 
     private func retry<T>(path: String, attempt: Int = 1, body: () async throws -> T) async throws -> T {
         do {
+            try Task.checkCancellation()
             return try await body()
         } catch {
+            if Task.isCancelled || error is CancellationError || error as? HTTPClientError == .cancelled {
+                throw CancellationError()
+            }
             if !isRetryable(error) || attempt >= config.maxAttempts {
                 if attempt > 1 {
                     RetryingHTTPClient.logger.warning(
@@ -93,18 +97,27 @@ public struct RetryingHTTPClient: Sendable {
         }
     }
 
+    private func isRetryableStatus(_ code: Int) -> Bool {
+        code == 408 || code == 429 || (500...599).contains(code)
+    }
+
     private func isRetryable(_ error: any Error) -> Bool {
         switch error {
-        case is CancellationError: return false
-        case is HTTPClientError: return true
-        case let se as StorageError:
-            switch se {
-            case .connectionFailed, .timeout: return true
-            case .httpError(let statusCode, _, _): return statusCode >= 500
-            case .invalidURL, .noSuchFile, .listFailed, .readFailed, .writeFailed, .deleteFailed:
+        case is CancellationError, is NIOTooManyBytesError: return false
+        case let error as HTTPClientError:
+            switch error {
+            case .invalidURL, .emptyHost, .emptyScheme, .alreadyShutdown, .bodyLengthMismatch,
+                .redirectLimitReached, .redirectCycleDetected, .cancelled:
                 return false
+            default: return true
             }
-        default: return true  // Any unexpected NIO/transport level error is likely transient
+        case let error as StorageError:
+            switch error {
+            case .connectionFailed, .timeout: return true
+            case .httpError(let code, _, _): return isRetryableStatus(code)
+            default: return false
+            }
+        default: return true  // Preserve bounded retries for unfamiliar transport errors.
         }
     }
 

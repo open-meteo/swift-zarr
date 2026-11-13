@@ -1,3 +1,4 @@
+import AsyncHTTPClient
 import Foundation
 import NIOCore
 import NIOHTTP1
@@ -49,54 +50,94 @@ private final class ChunkStatusHandler: ChannelInboundHandler, Sendable {
     }
 }
 
-@Test(arguments: [200, 400, 403, 404])
-func testS3ChunkHTTPStatus(code: Int) async throws {
+@Test(arguments: [(200, 1), (400, 1), (403, 1), (404, 1), (408, 3), (429, 3), (503, 3)])
+func testS3ChunkHTTPStatus(code: Int, attempts: Int) async throws {
+    try await withChunkServer(status: code) { baseURL, requests in
+        let storage = try S3CompatibleStorage(baseURL: baseURL)
+        let array = try ZarrArray(
+            metadata: V2ArrayMetadata(shape: [2], chunks: [2], dtype: "<i4", fillValue: .int(7)),
+            storage: storage,
+            path: "array"
+        )
+        if code == 200 {
+            let values: [Int32] = try await array.retrieveChunk([0])
+            #expect(values == [1, 2])
+            #expect(requests.snapshot == ["GET"])
+            let optional: [Int32]? = try await array.retrieveChunkIfExists([0])
+            #expect(optional == [1, 2])
+        } else if code == 404 {
+            let values: [Int32] = try await array.retrieveChunk([0])
+            #expect(values == [7, 7])
+            let missing: [Int32]? = try await array.retrieveChunkIfExists([0])
+            #expect(missing == nil)
+        } else {
+            do {
+                let values: [Int32] = try await array.retrieveChunk([0])
+                Issue.record("HTTP \(code) unexpectedly returned values: \(values)")
+            } catch StorageError.httpError(let status, let path, _) {
+                #expect(status == code)
+                #expect(path == "array/0")
+            }
+            do {
+                let values: [Int32]? = try await array.retrieveChunkIfExists([0])
+                Issue.record("HTTP \(code) unexpectedly returned: \(String(describing: values))")
+            } catch StorageError.httpError(let status, let path, _) {
+                #expect(status == code)
+                #expect(path == "array/0")
+            }
+        }
+        #expect(requests.snapshot == Array(repeating: "GET", count: 2 * attempts))
+        let client = RetryingHTTPClient()
+        let request = HTTPClientRequest(url: "\(baseURL)/array/0")
+        do {
+            let response = try await client.execute(request, path: "array/0")
+            _ = try await response.body.collect(upTo: 1024)
+            #expect(attempts == 1)
+            #expect(Int(response.status.code) == code)
+        } catch StorageError.httpError(let status, _, _) {
+            #expect(attempts == 3)
+            #expect(status == code)
+        }
+        #expect(requests.snapshot.count == 3 * attempts)
+    }
+}
+
+@Test
+func testS3DoesNotRetryOversizedResponse() async throws {
+    try await withChunkServer(status: 200) { baseURL, requests in
+        let storage = try S3CompatibleStorage(baseURL: baseURL, maxBodySize: 4)
+        do {
+            _ = try await storage.read(path: "array/0")
+            Issue.record("Expected the response size limit to fail")
+        } catch StorageError.connectionFailed(_, let underlying) {
+            #expect(underlying is NIOTooManyBytesError)
+        }
+        #expect(requests.snapshot == ["GET"])
+    }
+}
+
+private func withChunkServer(
+    status: Int,
+    body: (String, RequestLog) async throws -> Void
+) async throws {
     let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     let requests = RequestLog()
     do {
         let server = try await ServerBootstrap(group: group)
             .childChannelInitializer { channel in
                 channel.pipeline.configureHTTPServerPipeline().flatMap {
-                    channel.pipeline.addHandler(ChunkStatusHandler(status: .init(statusCode: code), requests: requests))
+                    channel.pipeline.addHandler(
+                        ChunkStatusHandler(
+                            status: .init(statusCode: status),
+                            requests: requests
+                        )
+                    )
                 }
             }
             .bind(host: "127.0.0.1", port: 0).get()
         do {
             let port = try #require(server.localAddress?.port)
-            let storage = try S3CompatibleStorage(baseURL: "http://127.0.0.1:\(port)")
-            let array = try ZarrArray(
-                metadata: V2ArrayMetadata(shape: [2], chunks: [2], dtype: "<i4", fillValue: .int(7)),
-                storage: storage,
-                path: "array"
-            )
-            if code == 200 {
-                let values: [Int32] = try await array.retrieveChunk([0])
-                #expect(values == [1, 2])
-                #expect(requests.snapshot == ["GET"])
-                let optional: [Int32]? = try await array.retrieveChunkIfExists([0])
-                #expect(optional == [1, 2])
-            } else if code == 404 {
-                let values: [Int32] = try await array.retrieveChunk([0])
-                #expect(values == [7, 7])
-                let missing: [Int32]? = try await array.retrieveChunkIfExists([0])
-                #expect(missing == nil)
-            } else {
-                do {
-                    let values: [Int32] = try await array.retrieveChunk([0])
-                    Issue.record("HTTP \(code) unexpectedly returned values: \(values)")
-                } catch StorageError.httpError(let status, let path, _) {
-                    #expect(status == code)
-                    #expect(path == "array/0")
-                }
-                do {
-                    let values: [Int32]? = try await array.retrieveChunkIfExists([0])
-                    Issue.record("HTTP \(code) unexpectedly returned: \(String(describing: values))")
-                } catch StorageError.httpError(let status, let path, _) {
-                    #expect(status == code)
-                    #expect(path == "array/0")
-                }
-            }
-            #expect(requests.snapshot == ["GET", "GET"])
+            try await body("http://127.0.0.1:\(port)", requests)
         } catch {
             try await server.close().get()
             throw error
