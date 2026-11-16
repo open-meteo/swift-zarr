@@ -26,11 +26,26 @@ jobs:
         with:
           submodules: true
 
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v3
+      # Remove this workaround and use swiftly-action on macOS once
+      # https://github.com/vapor/swiftly-action/pull/8 is resolved and released.
+      - name: Setup Swift (macOS)
+        if: runner.os == 'macOS'
+        env:
+          REQUESTED_TOOLCHAIN: ${{ matrix.swift }}
+        run: |
+          brew install swiftly
+          swiftly init --assume-yes --no-modify-profile --skip-install --quiet-shell-followup
+          source "${SWIFTLY_HOME_DIR:-$HOME/.swiftly}/env.sh"
+          swiftly install --assume-yes --use "$REQUESTED_TOOLCHAIN"
+          echo "SWIFTLY_HOME_DIR=$SWIFTLY_HOME_DIR" >> "$GITHUB_ENV"
+          echo "SWIFTLY_BIN_DIR=$SWIFTLY_BIN_DIR" >> "$GITHUB_ENV"
+          echo "$SWIFTLY_BIN_DIR" >> "$GITHUB_PATH"
+
+      - name: Setup Swift (Linux)
+        if: runner.os == 'Linux'
+        uses: vapor/swiftly-action@v0.2
         with:
-          swift-version: ${{ matrix.swift }}
-          skip-verify-signature: true
+          toolchain: ${{ matrix.swift }}
 
       - name: Cache resolved dependencies
         id: cache-deps
@@ -61,10 +76,9 @@ jobs:
         with:
           submodules: true
 
-      - uses: swift-actions/setup-swift@v3
+      - uses: vapor/swiftly-action@v0.2
         with:
-          swift-version: "6.2"
-          skip-verify-signature: true
+          toolchain: "6.2"
 
       - name: Run swift-format lint
         run: swift-format lint --strict --recursive .
