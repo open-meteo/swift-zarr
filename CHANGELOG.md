@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.2.0](https://github.com/open-meteo/swift-zarr/compare/v0.1.5...v0.2.0) (2026-11-13)
+
+
+### Features
+
+* add support for zstd ([#35](https://github.com/open-meteo/swift-zarr/issues/35)) ([11e1fca](https://github.com/open-meteo/swift-zarr/commit/11e1fcac5e747ebefb4e47d4148ee48435e4b988))
+* add typed chunk writes ([#41](https://github.com/open-meteo/swift-zarr/issues/41)) ([fa6e9b1](https://github.com/open-meteo/swift-zarr/commit/fa6e9b1a70d307a121bda3667282f4b46b38a0c3))
+* decode directly into output buffer if possible ([#39](https://github.com/open-meteo/swift-zarr/issues/39)) ([5e567fd](https://github.com/open-meteo/swift-zarr/commit/5e567fd350c3cc77ba60e0e4e04af7e0369e2baa))
+* interoperability tests with python generated fixtures ([#25](https://github.com/open-meteo/swift-zarr/issues/25)) ([c65dbf8](https://github.com/open-meteo/swift-zarr/commit/c65dbf8dc57988313d8e376f3597968ae298c52f))
+* use vendored zlib for gzip and zlib codecs ([#36](https://github.com/open-meteo/swift-zarr/issues/36)) ([f61ac11](https://github.com/open-meteo/swift-zarr/commit/f61ac11e5fa7d8d0d34eb76e80c49c978d16b445))
+
+
+### Bug Fixes
+
+* avoid buffer copy ([#42](https://github.com/open-meteo/swift-zarr/issues/42)) ([16e3e93](https://github.com/open-meteo/swift-zarr/commit/16e3e9398c1cfb148bde4bbb6550f2e87a029274))
+* exclude directories from local storage listings ([#26](https://github.com/open-meteo/swift-zarr/issues/26)) ([1769582](https://github.com/open-meteo/swift-zarr/commit/17695829f8c1bf4d1f6d34d9b8d030ac2fd20a07))
+* honor configured Blosc block sizes ([#28](https://github.com/open-meteo/swift-zarr/issues/28)) ([2c31f81](https://github.com/open-meteo/swift-zarr/commit/2c31f815a2d76ff66c5ff06a07cd1c99760acb49))
+* improve retry policy for S3 access ([#40](https://github.com/open-meteo/swift-zarr/issues/40)) ([9d724c9](https://github.com/open-meteo/swift-zarr/commit/9d724c95b5407239d8331a2f7638928abf3db3ed))
+* metadata persistence and give V2/V3 groups consistent attribute semantics ([#19](https://github.com/open-meteo/swift-zarr/issues/19)) ([7cae8a6](https://github.com/open-meteo/swift-zarr/commit/7cae8a6a97e4cc72e435461b29c7c2e9d18a8c25))
+* optimize typed chunk assembly and endian conversion ([#23](https://github.com/open-meteo/swift-zarr/issues/23)) ([885e5c7](https://github.com/open-meteo/swift-zarr/commit/885e5c7a9075039876abb765d76a4d7f58dd9689))
+* parse Blosc shuffle modes for V2 and V3 ([#31](https://github.com/open-meteo/swift-zarr/issues/31)) ([937d3c5](https://github.com/open-meteo/swift-zarr/commit/937d3c500d0bcdb0470e5c97a93d05c88eb55292))
+* prevent unnecessary HEAD requests ([#37](https://github.com/open-meteo/swift-zarr/issues/37)) ([75ce083](https://github.com/open-meteo/swift-zarr/commit/75ce083bcc879a398c49cd065355b82228570817))
+* reject invalid bzip2 compression levels ([#30](https://github.com/open-meteo/swift-zarr/issues/30)) ([51508f2](https://github.com/open-meteo/swift-zarr/commit/51508f2613e40837a4c9912d03f12c3d77e804c2))
+* S3 existence checks masking HTTP errors ([#34](https://github.com/open-meteo/swift-zarr/issues/34)) ([b371283](https://github.com/open-meteo/swift-zarr/commit/b371283ac5d025268ad4cd0c5e916c4f1159cb7f))
+* throw on non-supported v2 filters ([#20](https://github.com/open-meteo/swift-zarr/issues/20)) ([0afa353](https://github.com/open-meteo/swift-zarr/commit/0afa353d1fbbe239d9dca6fc61e3f4a04408ec95))
+* use system zlib ([#38](https://github.com/open-meteo/swift-zarr/issues/38)) ([36fbcee](https://github.com/open-meteo/swift-zarr/commit/36fbceeeec8ce0451832e0b4b19d75a948c3c717))
+* v3 metadata interoperability and validate codec pipelines ([#18](https://github.com/open-meteo/swift-zarr/issues/18)) ([910643f](https://github.com/open-meteo/swift-zarr/commit/910643fddc63820ef89a07529a4ab59f58f804a7))
+* v3 storage chunk keys ([#16](https://github.com/open-meteo/swift-zarr/issues/16)) ([e523766](https://github.com/open-meteo/swift-zarr/commit/e523766be463bdcd32297d530986899251d66308))
+* validate and cache fill values and support Float16 reads ([#27](https://github.com/open-meteo/swift-zarr/issues/27)) ([02a752e](https://github.com/open-meteo/swift-zarr/commit/02a752e0b7b3c80e9306c15e9f044dea7f740fb5))
+* validate array metadata and expose public constructors ([#33](https://github.com/open-meteo/swift-zarr/issues/33)) ([fe09ee7](https://github.com/open-meteo/swift-zarr/commit/fe09ee7c1c64b787e1f318f5cd0a9ef139f39bf3))
+* validate chunk lengths and fix physical shape of edge chunks ([#22](https://github.com/open-meteo/swift-zarr/issues/22)) ([d260e08](https://github.com/open-meteo/swift-zarr/commit/d260e086248bd9b0dbbf2a80a374994fbcbe3abc))
+* validate compressed blosc buffer before allocation ([#21](https://github.com/open-meteo/swift-zarr/issues/21)) ([c9d6bf3](https://github.com/open-meteo/swift-zarr/commit/c9d6bf35b02e97d1b332dfd6ffc7248a9c033950))
+* validate fixed-width dtype sizes ([#29](https://github.com/open-meteo/swift-zarr/issues/29)) ([2d8f60f](https://github.com/open-meteo/swift-zarr/commit/2d8f60f28c802be9f2058b2292bf739d7760f7cc))
+* validate group metadata versions and node types ([#32](https://github.com/open-meteo/swift-zarr/issues/32)) ([797f641](https://github.com/open-meteo/swift-zarr/commit/797f64195f62e10ebe2a008b09e72a19497a8f2f))
+
 ## [0.1.5](https://github.com/open-meteo/swift-zarr/compare/v0.1.4...v0.1.5) (2026-07-08)
 
 
