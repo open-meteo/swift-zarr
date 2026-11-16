@@ -16,9 +16,9 @@ jobs:
           - swift: "6.2.4"
             os: macos-26
           - swift: "6.1.3"
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - swift: "6.2.4"
-            os: ubuntu-latest
+            os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }} (Swift ${{ matrix.swift }})
     steps:
@@ -69,7 +69,7 @@ jobs:
         run: swift test
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Lint (Swift 6)
     steps:
       - uses: actions/checkout@v6
@@ -90,9 +90,9 @@ jobs:
           path: |
             .build
             Package.resolved
-          key: ubuntu-latest-swift-6.2.4-spm-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: ubuntu-24.04-swift-6.2.4-spm-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            ubuntu-latest-swift-6.2.4-spm-
+            ubuntu-24.04-swift-6.2.4-spm-
 
       - name: Resolve dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
