@@ -71,12 +71,13 @@ public struct RetryingHTTPClient: Sendable {
     // MARK: - Retry helpers
 
     private func retry<T>(path: String, attempt: Int = 1, body: () async throws -> T) async throws -> T {
+        try Task.checkCancellation()
         do {
-            try Task.checkCancellation()
             return try await body()
         } catch {
-            if Task.isCancelled || error is CancellationError || error as? HTTPClientError == .cancelled {
-                throw CancellationError()
+            try Task.checkCancellation()
+            if error is CancellationError {
+                throw error
             }
             if !isRetryable(error) || attempt >= config.maxAttempts {
                 if attempt > 1 {
@@ -107,7 +108,7 @@ public struct RetryingHTTPClient: Sendable {
         case let error as HTTPClientError:
             switch error {
             case .invalidURL, .emptyHost, .emptyScheme, .alreadyShutdown, .bodyLengthMismatch,
-                .redirectLimitReached, .redirectCycleDetected, .cancelled:
+                .redirectLimitReached, .redirectCycleDetected:
                 return false
             default: return true
             }
