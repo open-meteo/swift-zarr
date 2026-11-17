@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/open-meteo/swift-zarr/compare/v0.2.0...v0.2.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **ci:** migrate away from setup-swift action ([#43](https://github.com/open-meteo/swift-zarr/issues/43)) ([0f25656](https://github.com/open-meteo/swift-zarr/commit/0f25656fb2c9a761ab63dd753c6e17424787deb0))
+* **ci:** update actions and adjust semantic PR permissions ([#45](https://github.com/open-meteo/swift-zarr/issues/45)) ([c342fbf](https://github.com/open-meteo/swift-zarr/commit/c342fbf1c43bf56f7cf7e030dc67939877ecc6a9))
+* retry HTTPClientError.cancelled ([#46](https://github.com/open-meteo/swift-zarr/issues/46)) ([32eb00e](https://github.com/open-meteo/swift-zarr/commit/32eb00e54e5e5fc2318f77d8dfafb08079dd999f))
+
 ## [0.2.0](https://github.com/open-meteo/swift-zarr/compare/v0.1.5...v0.2.0) (2026-11-13)
 
 
